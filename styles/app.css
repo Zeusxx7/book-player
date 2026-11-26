@@ -2130,10 +2130,51 @@ kbd {
 @media (max-width: 960px) {
   .player-layout {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .panel-card {
-    max-height: 560px;
+    max-height: none;
+  }
+
+  .chapters-list,
+  .bookmarks-list {
+    overflow-y: visible;
+    padding-right: 0;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  #shortcutsBtn,
+  .scrub-hover-tip,
+  .volume-range {
+    display: none !important;
+  }
+
+  .scrubber-track-wrap {
+    height: 38px;
+  }
+
+  .scrub-range {
+    height: 7px;
+  }
+
+  .scrub-range::-webkit-slider-thumb,
+  .speed-slider::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .scrub-range::-moz-range-thumb,
+  .speed-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .scrub-marker {
+    width: 11px;
+    height: 11px;
+    top: 2px;
   }
 }
 
@@ -2142,46 +2183,229 @@ kbd {
     padding: 10px 14px;
   }
 
+  .topbar-left {
+    gap: 10px;
+  }
+
   .brand-tag {
     display: none;
   }
 
-  .main-content {
-    padding: 16px 14px calc(104px + env(safe-area-inset-bottom, 0px));
+  .nav-pill {
+    padding: 6px 12px;
   }
 
+  .main-content {
+    padding: 14px 12px calc(116px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .player-card {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+
+  /* Keep cover beside title/progress on mobile to save vertical space */
   .player-book-header {
-    flex-direction: column;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 16px;
   }
 
   .player-cover-wrap {
-    width: 74px;
-    height: 98px;
+    width: 68px;
+    height: 90px;
+  }
+
+  .player-cover-wrap .cover-monogram {
+    font-size: 1.4rem;
+  }
+
+  .player-book-title {
+    font-size: 1.14rem;
+  }
+
+  .player-track-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    margin-bottom: 10px;
+    font-size: 0.88rem;
+  }
+
+  .scrubber-section {
+    margin-bottom: 14px;
   }
 
   .secondary-actions {
-    justify-content: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+  }
+
+  .bookmark-cta-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .bookmark-cta-group .btn {
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
   }
 
   .utility-controls {
+    width: 100%;
     margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .sleep-control {
+    flex: 1;
+    min-height: 38px;
+  }
+
+  .sleep-control select {
+    width: 100%;
+  }
+
+  /* Full-width compact speed bar */
+  .speed-compact-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+  }
+
+  .speed-compact-row .speed-step-btn,
+  .speed-toggle-btn {
+    min-height: 42px;
+    justify-content: center;
+  }
+
+  /* Mobile precision speed console */
+  .speed-console {
+    padding: 14px 12px;
+  }
+
+  .speed-stepper-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .speed-stepper-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 6px;
+    width: 100%;
+  }
+
+  .speed-readout-wrap {
+    grid-column: 1 / -1;
+    order: -1;
+    width: 100%;
+  }
+
+  .speed-readout-btn,
+  .speed-exact-input {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .speed-step-btn {
+    min-height: 40px;
+    padding: 8px 6px;
+  }
+
+  .speed-reset-btn {
+    width: 100%;
+    min-height: 38px;
   }
 
   .speed-scale-ticks {
     padding: 4px 28px 0;
+    font-size: 0.64rem;
   }
-}
 
-.sleep-pill:hover:not(:disabled) {
-  border-color: var(--accent);
-}
+  .speed-presets-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
 
-.sleep-pill:disabled {
-  cursor: default;
-}
+  .preset-pill {
+    text-align: center;
+    padding: 7px 4px;
+  }
 
-/* Phones: pin the transport to the bottom of the screen while the chapter list scrolls */
-@media (max-width: 640px) {
+  /* Chapters & Bookmarks mobile polish */
+  .tab-panel {
+    padding: 12px;
+  }
+
+  .panel-tab {
+    min-height: 46px;
+  }
+
+  .panel-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .panel-toolbar .search-box {
+    flex: 1 1 100%;
+  }
+
+  .panel-btn-group {
+    width: 100%;
+  }
+
+  .panel-btn-group .btn {
+    flex: 1;
+    min-height: 36px;
+  }
+
+  .bookmarks-toolbar select {
+    width: 100%;
+  }
+
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-chip {
+    flex-shrink: 0;
+    min-height: 32px;
+  }
+
+  .chapter-row {
+    min-height: 48px;
+  }
+
+  .subchapter-row {
+    min-height: 40px;
+  }
+
+  .bookmark-jump-btn,
+  .bookmark-actions .btn {
+    padding: 5px 12px;
+    min-height: 32px;
+  }
+
+  /* Pinned bottom transport bar */
   .transport-row {
     position: fixed;
     left: 0;
@@ -2189,15 +2413,16 @@ kbd {
     bottom: 0;
     z-index: 30;
     margin: 0;
-    gap: 10px;
-    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    justify-content: space-evenly;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
     background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.22);
   }
 
-  /* Thin chapter-progress line along the top edge of the pinned bar */
   .transport-row::before {
     content: "";
     position: absolute;
@@ -2208,15 +2433,30 @@ kbd {
     background: var(--accent);
   }
 
+  .transport-btn {
+    width: 46px;
+    height: 46px;
+  }
+
   .play-btn {
     width: 56px;
     height: 56px;
   }
 
-  /* Keep toasts above the pinned bar */
   .toast-container {
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
   }
+}
+
+.sleep-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.sleep-pill:disabled {
+  cursor: default;
 }
 
 /* Top bar on narrow screens: keep nav labels on one line and every control visible */
@@ -2232,30 +2472,12 @@ kbd {
   flex-shrink: 0;
 }
 
-/* Keyboard shortcuts are irrelevant on touch-only devices */
-@media (hover: none) and (pointer: coarse) {
-  #shortcutsBtn {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .topbar-left {
-    gap: 10px;
-  }
-
-  .nav-pill {
-    padding: 6px 12px;
-  }
-}
-
 @media (max-width: 420px) {
   .topbar {
     gap: 8px;
     padding: 10px 12px;
   }
 
-  /* The logo alone identifies the app; "Lectio" stays available to screen readers via the title */
   .brand-name {
     display: none;
   }
@@ -2271,5 +2493,10 @@ kbd {
 
   #installAppBtn {
     padding-inline: 10px;
+  }
+
+  .player-cover-wrap {
+    width: 56px;
+    height: 76px;
   }
 }
