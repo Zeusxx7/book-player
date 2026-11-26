@@ -115,7 +115,12 @@ export function initModals({ els, player, onSaveBookmark, onSaveBookEdit }) {
     renderBookmarkModalMeta();
   });
   els.bmNudgeFwdBtn.addEventListener('click', () => {
-    const max = player.duration || Infinity;
+    // Clamp to the bookmark's own track, which may not be the one playing
+    const bmTrack = editingBookmark
+      ? player.tracks.find((t) => t.id === editingBookmark.trackId)
+      : player.getCurrentTrack();
+    const isCurrent = bmTrack && bmTrack === player.getCurrentTrack();
+    const max = (isCurrent ? player.duration : 0) || bmTrack?.duration || Infinity;
     modalBookmarkTime = Math.min(max, modalBookmarkTime + 5);
     renderBookmarkModalMeta();
   });

@@ -41,15 +41,36 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+const NETWORK_TIMEOUT_MS = 3000;
+
+async function fetchAndCache(request, cacheKey) {
+  const response = await fetch(request);
+  if (response && response.ok && response.type === 'basic') {
+    const clone = response.clone();
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(cacheKey, clone);
+  }
+  return response;
+}
+
 async function networkFirst(request, cacheKey = request) {
+  const networkPromise = fetchAndCache(request, cacheKey);
   try {
-    const response = await fetch(request);
-    if (response && response.ok && response.type === 'basic') {
-      const clone = response.clone();
-      const cache = await caches.open(CACHE_NAME);
-      await cache.put(cacheKey, clone);
+    // On a very slow connection, fall back to the cached copy after a timeout
+    // (the network fetch keeps running and refreshes the cache for next time).
+    const cached = await caches.match(cacheKey);
+    if (!cached) return await networkPromise;
+
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(cached), NETWORK_TIMEOUT_MS);
+    });
+    networkPromise.catch(() => {}); // avoid an unhandled rejection if the timeout wins
+    try {
+      return await Promise.race([networkPromise, timeout]);
+    } finally {
+      clearTimeout(timer);
     }
-    return response;
   } catch {
     const cached = await caches.match(cacheKey);
     if (cached) return cached;

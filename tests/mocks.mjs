@@ -218,7 +218,9 @@ export function installBrowserMocks() {
     }
 
     set src(val) {
+      // Real media elements start loading as soon as src is set
       this._src = val;
+      this._scheduleMetadata();
     }
 
     removeAttribute(attr) {
@@ -226,7 +228,15 @@ export function installBrowserMocks() {
     }
 
     load() {
+      this._scheduleMetadata();
+    }
+
+    // Setting src and then calling load() fires loadedmetadata once, like a browser
+    _scheduleMetadata() {
+      if (this._metadataPending) return;
+      this._metadataPending = true;
       queueMicrotask(() => {
+        this._metadataPending = false;
         if (this._src) {
           this.dispatchEvent(new Event('loadedmetadata'));
         }
@@ -241,7 +251,8 @@ export function installBrowserMocks() {
     pause() {
       if (!this.paused) {
         this.paused = true;
-        this.dispatchEvent(new Event('pause'));
+        // Browsers fire 'pause' asynchronously (queued task), not inline
+        setTimeout(() => this.dispatchEvent(new Event('pause')), 0);
       }
     }
 

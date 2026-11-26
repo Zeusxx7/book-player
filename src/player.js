@@ -28,6 +28,7 @@ export class LectioPlayer extends EventTarget {
     this._lastPersistAt = 0;
     this._loadToken = 0;
     this._lastEmbeddedChapterIndex = -1;
+    this._chapterCache = new WeakMap();
 
     this._bindAudioEvents();
     this._bindMediaSession();
@@ -61,12 +62,18 @@ export class LectioPlayer extends EventTarget {
   getEmbeddedChapters(track = this.getCurrentTrack()) {
     const raw = track?.chapters;
     if (!Array.isArray(raw) || raw.length === 0) return [];
-    const sorted = [...raw].sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
     const trackDur = track === this.getCurrentTrack()
       ? (this.duration || track.duration || 0)
       : (track.duration || 0);
 
-    return sorted.map((ch, idx) => {
+    // Called several times per timeupdate; reuse the result while inputs are unchanged
+    const cached = this._chapterCache.get(track);
+    if (cached && cached.raw === raw && cached.trackDur === trackDur) {
+      return cached.chapters;
+    }
+
+    const sorted = [...raw].sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+    const chapters = sorted.map((ch, idx) => {
       const startTime = Math.max(0, Number(ch.startTime) || 0);
       const nextStart = idx + 1 < sorted.length ? Math.max(startTime, Number(sorted[idx + 1].startTime) || 0) : null;
       const endTime = nextStart !== null ? nextStart : (trackDur > startTime ? trackDur : null);
@@ -77,6 +84,8 @@ export class LectioPlayer extends EventTarget {
         endTime,
       };
     });
+    this._chapterCache.set(track, { raw, trackDur, chapters });
+    return chapters;
   }
 
   getCurrentEmbeddedChapter(time = this.currentTime, track = this.getCurrentTrack()) {
@@ -468,6 +477,9 @@ export class LectioPlayer extends EventTarget {
     if (!this.audio.paused) {
       this.audio.pause();
     }
+    // The 'pause' event fires asynchronously; reflect the new state right away so
+    // anything emitted before it (e.g. the sleep-timer statechange) is accurate.
+    this.isPlaying = false;
   }
 
   async togglePlay() {

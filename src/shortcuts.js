@@ -1,3 +1,7 @@
+// Buttons that seek the audio (chapter rows, sub-chapters, bookmark jumps, scrub
+// markers). Pressing Space on one should pause rather than jump back again.
+const SPACE_TOGGLES_PLAYBACK_WITHIN = '[data-track-idx], [data-subchapter-time], [data-jump-bm], [data-seek-time]';
+
 export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggleShortcuts }) {
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) {
@@ -15,8 +19,13 @@ export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggl
       return;
     }
 
-    // Let Space activate focused buttons, links, and summaries normally
-    if (e.code === 'Space' && (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY')) {
+    // Let Space activate focused buttons, links, and summaries normally — except
+    // seek/jump buttons in lists, where Space should still play/pause (Enter jumps).
+    if (
+      e.code === 'Space' &&
+      (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY') &&
+      !target.closest(SPACE_TOGGLES_PLAYBACK_WITHIN)
+    ) {
       return;
     }
 

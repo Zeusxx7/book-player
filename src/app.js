@@ -321,7 +321,8 @@ async function runImport(entries, targetBookId = null, bookTitleOverride = '') {
   if (!entries || entries.length === 0) return;
 
   let resolvedTargetBookId = targetBookId;
-  let skipExistingSignatures = false;
+  // When appending to an existing book, never re-add files it already has
+  let skipExistingSignatures = Boolean(targetBookId);
 
   if (!resolvedTargetBookId && state.books.length > 0) {
     const duplicate = await findDuplicateBook(entries, state.books, getTracksForBook, bookTitleOverride);
@@ -643,10 +644,6 @@ function wireEvents() {
     if (!player.book) return;
     playerView.syncActiveChapterHighlight();
     playerView.updateMiniPlayer();
-  });
-
-  player.addEventListener('trackchange', () => {
-    playerView.renderPlayerAll();
   });
 
   player.addEventListener('speedchange', ({ detail }) => {
