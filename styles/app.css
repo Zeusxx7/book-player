@@ -2218,3 +2218,58 @@ kbd {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Top bar on narrow screens: keep nav labels on one line and every control visible */
+.nav-pill {
+  white-space: nowrap;
+}
+
+.topbar-left {
+  min-width: 0;
+}
+
+.topbar-actions {
+  flex-shrink: 0;
+}
+
+/* Keyboard shortcuts are irrelevant on touch-only devices */
+@media (hover: none) and (pointer: coarse) {
+  #shortcutsBtn {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-left {
+    gap: 10px;
+  }
+
+  .nav-pill {
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  /* The logo alone identifies the app; "Lectio" stays available to screen readers via the title */
+  .brand-name {
+    display: none;
+  }
+
+  .nav-pill {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  #installAppBtn {
+    padding-inline: 10px;
+  }
+}
