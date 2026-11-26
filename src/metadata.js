@@ -379,8 +379,8 @@ export function probeAudioDuration(blob, mimeType = '', timeoutMs = 5000) {
   });
 }
 
-export async function createCoverDataUrl(imageBlob, maxSize = 480) {
-  if (!imageBlob || typeof document === 'undefined') return '';
+export async function createCoverAsset(imageBlob, maxSize = 480) {
+  if (!imageBlob || typeof document === 'undefined') return null;
   const objectUrl = URL.createObjectURL(imageBlob);
   try {
     const img = await new Promise((resolve, reject) => {
@@ -399,10 +399,21 @@ export async function createCoverDataUrl(imageBlob, maxSize = 480) {
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.84);
+    const mime = 'image/jpeg';
+    return {
+      dataUrl: canvas.toDataURL(mime, 0.84),
+      width,
+      height,
+      mime,
+    };
   } catch {
-    return '';
+    return null;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+export async function createCoverDataUrl(imageBlob, maxSize = 480) {
+  const asset = await createCoverAsset(imageBlob, maxSize);
+  return asset?.dataUrl || '';
 }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Lectio — Textbook &amp; Audiobook Player</title>
   <meta name="description" content="Offline Progressive Web App audiobook player for multi-file textbooks with ultra-granular playback speed and study bookmarks." />
-  <meta name="theme-color" content="#0f1117" />
+  <meta name="theme-color" content="#0b0d12" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -19,7 +19,7 @@
     <header class="topbar">
       <div class="topbar-left">
         <button id="brandBtn" class="brand" type="button" title="Lectio Library">
-          <img src="./icons/icon.svg" alt="" class="brand-icon" width="30" height="30" />
+          <img src="./icons/icon.svg" alt="" class="brand-icon" width="32" height="32" />
           <span class="brand-name">Lectio</span>
           <span class="brand-tag">Textbook Audio</span>
         </button>
@@ -35,10 +35,10 @@
           Install App
         </button>
         <button id="shortcutsBtn" class="icon-btn" type="button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
-          <span>?</span>
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8"/></svg>
         </button>
         <button id="themeToggleBtn" class="icon-btn" type="button" title="Toggle Theme" aria-label="Toggle Theme">
-          <span id="themeIcon">☀</span>
+          <span id="themeIcon" class="icon-slot"></span>
         </button>
       </div>
     </header>
@@ -52,21 +52,31 @@
 
     <!-- Main Content -->
     <main class="main-content">
+      <div id="fatalErrorBanner" class="fatal-banner hidden" role="alert">
+        <span id="fatalErrorText">Offline storage could not be initialized.</span>
+        <button id="retryInitBtn" class="btn btn-secondary btn-xs" type="button">Retry</button>
+      </div>
+
       <!-- LIBRARY VIEW -->
       <section id="libraryView" class="view">
         <div id="dropZone" class="upload-hero" tabindex="0" aria-label="Upload textbook folder or audio files">
           <div class="upload-hero-inner">
-            <div class="upload-badge">Offline-First Textbook Player</div>
+            <div class="upload-badge">
+              <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/></svg>
+              <span>Offline-First Textbook Studio</span>
+            </div>
             <h1>Drop a textbook folder or load chapters</h1>
             <p class="upload-subtitle">
               Recursively imports nested chapter folders, sorts parts naturally, preserves your exact fractional speed, and stores everything locally in your browser.
             </p>
             <div class="upload-cta-row">
               <button id="uploadFolderBtn" class="btn btn-primary" type="button">
-                Upload Textbook Folder
+                <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>
+                <span>Upload Textbook Folder</span>
               </button>
               <button id="uploadFilesBtn" class="btn btn-secondary" type="button">
-                Add Audio Files
+                <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                <span>Add Audio Files</span>
               </button>
             </div>
             <div class="format-chips" aria-label="Supported audio formats">
@@ -86,6 +96,7 @@
 
         <div class="library-toolbar">
           <div class="search-box">
+            <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input id="librarySearchInput" type="search" placeholder="Search textbooks or authors…" aria-label="Search textbooks" />
           </div>
           <div id="storageInfo" class="storage-pill">Checking local storage…</div>
@@ -128,9 +139,10 @@
                 </div>
               </div>
 
-              <!-- Scrub Bar with Bookmark Markers -->
+              <!-- Scrub Bar with Bookmark & Chapter Markers -->
               <div class="scrubber-section">
                 <div class="scrubber-track-wrap">
+                  <div id="scrubHoverTip" class="scrub-hover-tip hidden" aria-hidden="true"></div>
                   <div id="scrubMarkers" class="scrub-markers" aria-hidden="false"></div>
                   <input
                     id="scrubRange"
@@ -152,41 +164,45 @@
               <!-- Main Transport -->
               <div class="transport-row">
                 <button id="prevTrackBtn" class="transport-btn" type="button" title="Previous Chapter (Shift + ←)" aria-label="Previous Chapter">
-                  ⏮
+                  <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5v14"/><path d="M18 6l-8 6 8 6V6Z" fill="currentColor" stroke="none"/></svg>
                 </button>
                 <button id="skipBackBtn" class="transport-btn skip-btn" type="button" title="Back 15s (←)" aria-label="Skip back 15 seconds">
-                  −15s
+                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">15</text></svg>
                 </button>
                 <button id="playPauseBtn" class="play-btn" type="button" title="Play / Pause (Space)" aria-label="Play or Pause">
-                  ▶
+                  <span class="icon-slot"></span>
                 </button>
                 <button id="skipFwdBtn" class="transport-btn skip-btn" type="button" title="Forward 30s (→)" aria-label="Skip forward 30 seconds">
-                  +30s
+                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">30</text></svg>
                 </button>
                 <button id="nextTrackBtn" class="transport-btn" type="button" title="Next Chapter (Shift + →)" aria-label="Next Chapter">
-                  ⏭
+                  <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 5v14"/><path d="M6 6l8 6-8 6V6Z" fill="currentColor" stroke="none"/></svg>
                 </button>
               </div>
 
               <!-- Bookmark & Utility Actions -->
               <div class="secondary-actions">
-                <button id="quickBookmarkBtn" class="btn btn-secondary btn-sm" type="button" title="Quick Bookmark (B)">
-                  ★ Quick Bookmark
-                </button>
-                <button id="noteBookmarkBtn" class="btn btn-accent btn-sm" type="button" title="Bookmark with Note (Shift + B)">
-                  + Bookmark &amp; Note
-                </button>
+                <div class="bookmark-cta-group">
+                  <button id="quickBookmarkBtn" class="btn btn-secondary btn-sm" type="button" title="Quick Bookmark (B)">
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5v16.5l-6-4-6 4V4.5Z"/></svg>
+                    <span>Quick Bookmark</span>
+                  </button>
+                  <button id="noteBookmarkBtn" class="btn btn-accent btn-sm" type="button" title="Bookmark with Note (Shift + B)">
+                    <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-4.5L5 21V5a2 2 0 0 1 2-2h6"/><path d="M18 3v6"/><path d="M15 6h6"/></svg>
+                    <span>Bookmark &amp; Note</span>
+                  </button>
+                </div>
 
                 <div class="utility-controls">
                   <label class="sleep-control" title="Sleep Timer">
-                    <span class="utility-label">Sleep</span>
+                    <svg class="ui-icon ui-icon-sm utility-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
                     <select id="sleepTimerSelect" aria-label="Sleep Timer">
-                      <option value="off">Off</option>
-                      <option value="5">5m</option>
-                      <option value="15">15m</option>
-                      <option value="30">30m</option>
-                      <option value="45">45m</option>
-                      <option value="60">60m</option>
+                      <option value="off">Sleep Off</option>
+                      <option value="5">5 min</option>
+                      <option value="15">15 min</option>
+                      <option value="30">30 min</option>
+                      <option value="45">45 min</option>
+                      <option value="60">60 min</option>
                       <option value="end-of-chapter">End of Chapter</option>
                     </select>
                   </label>
@@ -194,9 +210,9 @@
 
                   <div class="volume-control">
                     <button id="muteBtn" class="icon-btn btn-xs" type="button" title="Mute / Unmute (M)" aria-label="Mute">
-                      🔊
+                      <span class="icon-slot"></span>
                     </button>
-                    <input id="volumeRange" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
+                    <input id="volumeRange" class="volume-range" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
                   </div>
                 </div>
               </div>
@@ -209,50 +225,63 @@
                     <span class="speed-subtitle">0.01× granular steps · 0.25× to 4.00×</span>
                   </div>
                   <label class="pitch-toggle">
-                    <input id="pitchToggleInput" type="checkbox" checked />
-                    <span>Keep Natural Pitch</span>
+                    <input id="pitchToggleInput" class="pitch-checkbox" type="checkbox" checked />
+                    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                    <span class="pitch-label">Keep Natural Pitch</span>
                   </label>
                 </div>
 
                 <div class="speed-stepper-row">
-                  <button class="speed-step-btn" data-speed-delta="-0.10" type="button" title="Decrease 0.10× (Shift + [)">−0.10</button>
-                  <button class="speed-step-btn" data-speed-delta="-0.05" type="button" title="Decrease 0.05×">−0.05</button>
-                  <button class="speed-step-btn accent-step" data-speed-delta="-0.01" type="button" title="Decrease 0.01× ([)">−0.01</button>
+                  <div class="speed-stepper-group">
+                    <button class="speed-step-btn" data-speed-delta="-0.10" type="button" title="Decrease 0.10× (Shift + [)">−0.10</button>
+                    <button class="speed-step-btn" data-speed-delta="-0.05" type="button" title="Decrease 0.05×">−0.05</button>
+                    <button class="speed-step-btn accent-step" data-speed-delta="-0.01" type="button" title="Decrease 0.01× ([)">−0.01</button>
 
-                  <div class="speed-readout-wrap">
-                    <button id="speedReadoutBtn" class="speed-readout-btn mono" type="button" title="Click to type exact fractional speed (e.g. 1.375)">
-                      1.00×
-                    </button>
-                    <input
-                      id="speedExactInput"
-                      class="speed-exact-input mono hidden"
-                      type="number"
-                      min="0.25"
-                      max="4.00"
-                      step="0.001"
-                      aria-label="Exact playback speed"
-                    />
+                    <div class="speed-readout-wrap">
+                      <button id="speedReadoutBtn" class="speed-readout-btn mono" type="button" title="Click to type exact fractional speed (e.g. 1.375)">
+                        1.00×
+                      </button>
+                      <input
+                        id="speedExactInput"
+                        class="speed-exact-input mono hidden"
+                        type="number"
+                        min="0.25"
+                        max="4.00"
+                        step="0.001"
+                        aria-label="Exact playback speed"
+                      />
+                    </div>
+
+                    <button class="speed-step-btn accent-step" data-speed-delta="0.01" type="button" title="Increase 0.01× (])">+0.01</button>
+                    <button class="speed-step-btn" data-speed-delta="0.05" type="button" title="Increase 0.05×">+0.05</button>
+                    <button class="speed-step-btn" data-speed-delta="0.10" type="button" title="Increase 0.10× (Shift + ])">+0.10</button>
                   </div>
-
-                  <button class="speed-step-btn accent-step" data-speed-delta="0.01" type="button" title="Increase 0.01× (])">+0.01</button>
-                  <button class="speed-step-btn" data-speed-delta="0.05" type="button" title="Increase 0.05×">+0.05</button>
-                  <button class="speed-step-btn" data-speed-delta="0.10" type="button" title="Increase 0.10× (Shift + ])">+0.10</button>
-                  <button id="resetSpeedBtn" class="speed-reset-btn" type="button" title="Reset to 1.00× (0)">1.00×</button>
+                  <button id="resetSpeedBtn" class="speed-reset-btn" type="button" title="Reset to 1.00× (0)">Reset</button>
                 </div>
 
-                <div class="speed-slider-row">
-                  <span class="mono speed-bound">0.25×</span>
-                  <input
-                    id="speedSlider"
-                    class="speed-slider"
-                    type="range"
-                    min="0.25"
-                    max="4.00"
-                    step="0.01"
-                    value="1.00"
-                    aria-label="Fractional playback speed slider"
-                  />
-                  <span class="mono speed-bound">4.00×</span>
+                <div class="speed-slider-block">
+                  <div class="speed-slider-row">
+                    <span class="mono speed-bound">0.25×</span>
+                    <input
+                      id="speedSlider"
+                      class="speed-slider"
+                      type="range"
+                      min="0.25"
+                      max="4.00"
+                      step="0.01"
+                      value="1.00"
+                      aria-label="Fractional playback speed slider"
+                    />
+                    <span class="mono speed-bound">4.00×</span>
+                  </div>
+                  <div class="speed-scale-ticks mono" aria-hidden="true">
+                    <span>0.25×</span>
+                    <span>1.0×</span>
+                    <span>1.5×</span>
+                    <span>2.0×</span>
+                    <span>3.0×</span>
+                    <span>4.0×</span>
+                  </div>
                 </div>
 
                 <div class="speed-presets-section">
@@ -281,7 +310,10 @@
               <!-- Chapters Panel -->
               <div id="chaptersPanel" class="tab-panel">
                 <div class="panel-toolbar">
-                  <input id="chapterSearchInput" type="search" placeholder="Filter chapters…" aria-label="Filter chapters" />
+                  <div class="search-box search-box-sm">
+                    <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="chapterSearchInput" type="search" placeholder="Filter chapters…" aria-label="Filter chapters" />
+                  </div>
                   <div class="panel-btn-group">
                     <button id="appendFolderBtn" class="btn btn-secondary btn-xs" type="button">+ Folder</button>
                     <button id="appendFilesBtn" class="btn btn-secondary btn-xs" type="button">+ Files</button>
@@ -293,7 +325,10 @@
               <!-- Bookmarks Panel -->
               <div id="bookmarksPanel" class="tab-panel hidden">
                 <div class="panel-toolbar bookmarks-toolbar">
-                  <input id="bookmarkSearchInput" type="search" placeholder="Search notes or timestamps…" aria-label="Search bookmarks" />
+                  <div class="search-box search-box-sm">
+                    <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input id="bookmarkSearchInput" type="search" placeholder="Search notes or timestamps…" aria-label="Search bookmarks" />
+                  </div>
                   <select id="bookmarkSortSelect" aria-label="Sort bookmarks">
                     <option value="position">Book Order</option>
                     <option value="newest">Newest First</option>
@@ -318,17 +353,21 @@
 
     <!-- Sticky Mini Player (visible in Library view when a book is loaded) -->
     <div id="miniPlayer" class="mini-player hidden">
-      <div class="mini-player-info" id="miniPlayerOpenBtn" role="button" tabindex="0">
+      <button class="mini-player-info" id="miniPlayerOpenBtn" type="button" aria-label="Return to Now Playing">
         <div id="miniCover" class="mini-cover"></div>
         <div class="mini-text">
           <div id="miniBookTitle" class="mini-book-title"></div>
           <div id="miniTrackTitle" class="mini-track-title"></div>
         </div>
-      </div>
+      </button>
       <div class="mini-player-controls">
         <span id="miniSpeedBadge" class="chip mono">1.00×</span>
-        <button id="miniBookmarkBtn" class="btn btn-secondary btn-xs" type="button" title="Quick Bookmark">★</button>
-        <button id="miniPlayPauseBtn" class="btn btn-primary btn-sm" type="button">▶</button>
+        <button id="miniBookmarkBtn" class="icon-btn btn-xs" type="button" title="Quick Bookmark" aria-label="Quick Bookmark">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5v16.5l-6-4-6 4V4.5Z"/></svg>
+        </button>
+        <button id="miniPlayPauseBtn" class="btn btn-primary btn-sm mini-play-btn" type="button" aria-label="Play or Pause">
+          <span class="icon-slot"></span>
+        </button>
       </div>
     </div>
   </div>
@@ -336,14 +375,16 @@
   <!-- Global Drag-and-Drop Overlay -->
   <div id="dragOverlay" class="drag-overlay hidden" aria-hidden="true">
     <div class="drag-overlay-box">
-      <div class="drag-overlay-icon">📚</div>
+      <div class="drag-overlay-icon">
+        <svg class="ui-icon ui-icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>
+      </div>
       <h2>Drop textbook folder or audio files</h2>
       <p>Supports M4A, M4B, MP3, OGG, OPUS, FLAC, WAV, AAC, AIFF, WEBM</p>
     </div>
   </div>
 
   <!-- Import Progress Modal -->
-  <div id="importModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+  <dialog id="importModal" class="modal-dialog" aria-labelledby="importModalTitle">
     <div class="modal-card">
       <h3 id="importModalTitle">Importing Textbook Audio…</h3>
       <p id="importStatusText" class="modal-subtitle">Preparing files…</p>
@@ -352,14 +393,34 @@
       </div>
       <p id="importFileText" class="mono import-filename"></p>
     </div>
-  </div>
+  </dialog>
+
+  <!-- Duplicate Import Prompt Modal -->
+  <dialog id="duplicateModal" class="modal-dialog" aria-labelledby="duplicateModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="duplicateModalTitle">Textbook Already in Library</h3>
+        <button id="closeDuplicateModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p id="duplicateSummaryText" class="modal-subtitle"></p>
+      <div class="dup-actions">
+        <button id="dupSkipBtn" class="btn btn-secondary" type="button">Skip Import</button>
+        <button id="dupMergeBtn" class="btn btn-accent" type="button">Add Missing Files</button>
+        <button id="dupCopyBtn" class="btn btn-primary" type="button">Import as New Copy</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Bookmark Create / Edit Modal -->
-  <div id="bookmarkModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="bookmarkModalTitle">
+  <dialog id="bookmarkModal" class="modal-dialog" aria-labelledby="bookmarkModalTitle">
     <div class="modal-card">
       <div class="modal-header">
         <h3 id="bookmarkModalTitle">Add Study Bookmark</h3>
-        <button id="closeBookmarkModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+        <button id="closeBookmarkModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <form id="bookmarkForm" class="modal-form">
         <div class="form-group">
@@ -393,14 +454,16 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Book Edit Modal -->
-  <div id="bookEditModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="bookEditModalTitle">
+  <dialog id="bookEditModal" class="modal-dialog" aria-labelledby="bookEditModalTitle">
     <div class="modal-card">
       <div class="modal-header">
         <h3 id="bookEditModalTitle">Edit Textbook Details</h3>
-        <button id="closeBookEditModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+        <button id="closeBookEditModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <form id="bookEditForm" class="modal-form">
         <div class="form-group">
@@ -417,14 +480,16 @@
         </div>
       </form>
     </div>
-  </div>
+  </dialog>
 
   <!-- Keyboard Shortcuts Modal -->
-  <div id="shortcutsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="shortcutsModalTitle">
+  <dialog id="shortcutsModal" class="modal-dialog" aria-labelledby="shortcutsModalTitle">
     <div class="modal-card">
       <div class="modal-header">
         <h3 id="shortcutsModalTitle">Keyboard Shortcuts</h3>
-        <button id="closeShortcutsBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+        <button id="closeShortcutsBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <div class="shortcuts-grid">
         <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
@@ -439,7 +504,7 @@
         <div class="shortcut-item"><kbd>?</kbd><span>Toggle Shortcuts</span></div>
       </div>
     </div>
-  </div>
+  </dialog>
 
   <!-- Toast Stack -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>

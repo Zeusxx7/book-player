@@ -2,12 +2,32 @@ const DB_NAME = 'lectio-audiobooks';
 const DB_VERSION = 1;
 
 let dbPromise = null;
+let activeDb = null;
+
+function dispatchDbEvent(name) {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(name));
+  }
+}
 
 function openDB() {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    if (typeof indexedDB === 'undefined') {
+      dbPromise = null;
+      reject(new Error('IndexedDB is unavailable in this browser context.'));
+      return;
+    }
+
+    let request;
+    try {
+      request = indexedDB.open(DB_NAME, DB_VERSION);
+    } catch (err) {
+      dbPromise = null;
+      reject(err);
+      return;
+    }
 
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
@@ -37,11 +57,47 @@ function openDB() {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onblocked = () => {
+      dbPromise = null;
+      dispatchDbEvent('lectio:db-blocked');
+      reject(new Error('Database upgrade is blocked by another open tab.'));
+    };
+
+    request.onsuccess = () => {
+      const db = request.result;
+      activeDb = db;
+      db.onversionchange = () => {
+        db.close();
+        if (activeDb === db) activeDb = null;
+        dbPromise = null;
+        dispatchDbEvent('lectio:db-versionchange');
+      };
+      db.onclose = () => {
+        if (activeDb === db) activeDb = null;
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error || new Error('Failed to open IndexedDB.'));
+    };
   });
 
   return dbPromise;
+}
+
+export function closeDB() {
+  if (activeDb) {
+    try {
+      activeDb.close();
+    } catch {
+      // Ignore close errors
+    }
+    activeDb = null;
+  }
+  dbPromise = null;
 }
 
 function reqToPromise(request) {
@@ -221,11 +277,33 @@ export async function getAllSettings() {
 }
 
 export async function getStorageEstimate() {
-  if (!navigator.storage?.estimate) {
+  if (typeof navigator === 'undefined' || !navigator.storage?.estimate) {
     return null;
   }
   try {
     return await navigator.storage.estimate();
+  } catch {
+    return null;
+  }
+}
+
+export async function isStoragePersisted() {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persisted) {
+    return null;
+  }
+  try {
+    return await navigator.storage.persisted();
+  } catch {
+    return null;
+  }
+}
+
+export async function requestPersistentStorage() {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) {
+    return null;
+  }
+  try {
+    return await navigator.storage.persist();
   } catch {
     return null;
   }

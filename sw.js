@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lectio-v1';
+const CACHE_NAME = 'lectio-v3';
 
 const PRECACHE_ASSETS = [
   './',
@@ -6,6 +6,11 @@ const PRECACHE_ASSETS = [
   './manifest.webmanifest',
   './styles/app.css',
   './src/app.js',
+  './src/ui-utils.js',
+  './src/modals.js',
+  './src/shortcuts.js',
+  './src/views/library.js',
+  './src/views/player.js',
   './src/formats.js',
   './src/metadata.js',
   './src/db.js',
@@ -36,6 +41,37 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+async function networkFirst(request, cacheKey = request) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok && response.type === 'basic') {
+      const clone = response.clone();
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(cacheKey, clone);
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(cacheKey);
+    if (cached) return cached;
+    if (request.mode === 'navigate') {
+      return caches.match('./index.html');
+    }
+    throw new Error('Network unavailable and asset not cached');
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response && response.ok && response.type === 'basic') {
+    const clone = response.clone();
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, clone);
+  }
+  return response;
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -51,31 +87,16 @@ self.addEventListener('fetch', (event) => {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', clone));
-          return response;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
+    event.respondWith(networkFirst(request, './index.html'));
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          if (response && response.ok && response.type === 'basic') {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
+  // Keep icons cache-first; serve HTML, JS, CSS, and manifest network-first
+  // so a new deploy never mixes updated HTML with stale JS/CSS.
+  if (url.pathname.includes('/icons/')) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
 
-      return cached || networkFetch;
-    })
-  );
+  event.respondWith(networkFirst(request));
 });

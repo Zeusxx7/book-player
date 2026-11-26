@@ -10,7 +10,7 @@ import {
   scoreCoverImage,
   sortTextbookTracks,
 } from './formats.js';
-import { createCoverDataUrl, extractAudioMetadata, probeAudioDuration } from './metadata.js';
+import { createCoverAsset, extractAudioMetadata, probeAudioDuration } from './metadata.js';
 import {
   getBook,
   getTracksForBook,
@@ -156,11 +156,79 @@ async function runWithConcurrency(items, concurrency, worker) {
   return results;
 }
 
+function fileSignature(fileName, size) {
+  return `${String(fileName || '').toLowerCase()}::${Number(size) || 0}`;
+}
+
+function normalizeBookTitleKey(title = '') {
+  return String(title || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+export async function findDuplicateBook(entries, existingBooks, getTracksFn, bookTitleOverride = '') {
+  if (!Array.isArray(entries) || entries.length === 0 || !Array.isArray(existingBooks) || existingBooks.length === 0) {
+    return null;
+  }
+
+  const audioItems = [];
+  for (const item of entries) {
+    const file = item?.file || item;
+    const relativePath = item?.relativePath || file?.webkitRelativePath || file?.name || '';
+    if (!file || isIgnoredSystemPath(relativePath)) continue;
+    if (isSupportedAudioFile(relativePath, file.type)) {
+      audioItems.push({ file, relativePath });
+    }
+  }
+
+  if (audioItems.length === 0) return null;
+
+  const incomingSigs = new Set(audioItems.map(({ file }) => fileSignature(file.name, file.size)));
+  const { bookTitle } = extractFolderAndSection(audioItems[0].relativePath, '');
+  const inferredTitle = normalizeBookTitleKey(bookTitleOverride || bookTitle || cleanTrackTitle(audioItems[0].file.name));
+
+  for (const book of existingBooks) {
+    const sameTitleAndCount =
+      inferredTitle &&
+      normalizeBookTitleKey(book.title) === inferredTitle &&
+      (book.trackCount || 0) === audioItems.length;
+
+    if (sameTitleAndCount) {
+      return {
+        book,
+        reason: 'title-and-count',
+        matchedCount: audioItems.length,
+        incomingCount: audioItems.length,
+      };
+    }
+
+    if (typeof getTracksFn === 'function') {
+      const tracks = await getTracksFn(book.id);
+      if (tracks && tracks.length > 0) {
+        const existingSigs = new Set(tracks.map((t) => fileSignature(t.fileName, t.size)));
+        let matchedCount = 0;
+        for (const sig of incomingSigs) {
+          if (existingSigs.has(sig)) matchedCount++;
+        }
+        if (matchedCount > 0 && matchedCount / incomingSigs.size >= 0.8) {
+          return {
+            book,
+            reason: 'file-signatures',
+            matchedCount,
+            incomingCount: incomingSigs.size,
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function importFiles({
   entries,
   targetBookId = null,
   bookTitleOverride = '',
   defaultSpeed = DEFAULT_SPEED,
+  skipExistingSignatures = false,
   onProgress = () => {},
 }) {
   const rawEntries = (entries || []).map((item) =>
@@ -188,12 +256,38 @@ export async function importFiles({
     return {
       book: null,
       importedCount: 0,
+      duplicateSkippedCount: 0,
+      skippedFiles,
+    };
+  }
+
+  const existingBook = targetBookId ? await getBook(targetBookId) : null;
+  const existingTracks = existingBook ? await getTracksForBook(existingBook.id) : [];
+
+  let filteredAudio = audioItems;
+  let duplicateSkippedCount = 0;
+  if (existingBook && skipExistingSignatures) {
+    const existingSigs = new Set(existingTracks.map((t) => fileSignature(t.fileName, t.size)));
+    filteredAudio = audioItems.filter(({ file }) => {
+      if (existingSigs.has(fileSignature(file.name, file.size))) {
+        duplicateSkippedCount++;
+        return false;
+      }
+      return true;
+    });
+  }
+
+  if (filteredAudio.length === 0) {
+    return {
+      book: existingBook,
+      importedCount: 0,
+      duplicateSkippedCount,
       skippedFiles,
     };
   }
 
   const sortedAudio = sortTextbookTracks(
-    audioItems.map((item) => ({
+    filteredAudio.map((item) => ({
       ...item,
       fileName: item.file.name,
     }))
@@ -206,8 +300,6 @@ export async function importFiles({
     folderCoverBlob = imageItems[0].file;
   }
 
-  const existingBook = targetBookId ? await getBook(targetBookId) : null;
-  const existingTracks = existingBook ? await getTracksForBook(existingBook.id) : [];
   const bookId = existingBook ? existingBook.id : createId();
   const baseOrder = existingTracks.length;
 
@@ -295,10 +387,19 @@ export async function importFiles({
   await putTracksWithBlobs(newTracks, newBlobs);
 
   let coverDataUrl = existingBook?.coverDataUrl || '';
+  let coverWidth = existingBook?.coverWidth || 0;
+  let coverHeight = existingBook?.coverHeight || 0;
+  let coverMime = existingBook?.coverMime || '';
   if (!coverDataUrl) {
     const chosenCover = folderCoverBlob || embeddedCoverBlob;
     if (chosenCover) {
-      coverDataUrl = await createCoverDataUrl(chosenCover);
+      const asset = await createCoverAsset(chosenCover);
+      if (asset) {
+        coverDataUrl = asset.dataUrl;
+        coverWidth = asset.width;
+        coverHeight = asset.height;
+        coverMime = asset.mime;
+      }
     }
   }
 
@@ -312,6 +413,9 @@ export async function importFiles({
       trackCount: allTracks.length,
       totalDuration,
       coverDataUrl: coverDataUrl || existingBook.coverDataUrl,
+      coverWidth: coverWidth || existingBook.coverWidth || 0,
+      coverHeight: coverHeight || existingBook.coverHeight || 0,
+      coverMime: coverMime || existingBook.coverMime || '',
     });
   } else {
     const firstFolderTitle = processed[0]?.folderBookTitle;
@@ -327,10 +431,14 @@ export async function importFiles({
       title: finalTitle,
       author: detectedAuthor || 'Unknown Author',
       coverDataUrl,
+      coverWidth,
+      coverHeight,
+      coverMime,
       trackCount: newTracks.length,
       totalDuration: addedDuration,
       currentTrackIndex: 0,
       currentTime: 0,
+      bookTime: 0,
       playbackRate: defaultSpeed,
       createdAt: now,
       updatedAt: now,
@@ -342,6 +450,7 @@ export async function importFiles({
   return {
     book: savedBook,
     importedCount: newTracks.length,
+    duplicateSkippedCount,
     skippedFiles,
   };
 }
