@@ -206,7 +206,7 @@
                       <option value="end-of-chapter">End of Chapter</option>
                     </select>
                   </label>
-                  <span id="sleepCountdownPill" class="sleep-pill hidden"></span>
+                  <button id="sleepCountdownPill" class="sleep-pill hidden" type="button" title="Add 5 minutes" aria-label="Sleep timer remaining. Add 5 minutes"></button>
 
                   <div class="volume-control">
                     <button id="muteBtn" class="icon-btn btn-xs" type="button" title="Mute / Unmute (M)" aria-label="Mute">
@@ -217,8 +217,19 @@
                 </div>
               </div>
 
+              <!-- Compact Speed Control (full console expands below) -->
+              <div class="speed-compact-row">
+                <button class="speed-step-btn" data-speed-delta="-0.05" type="button" title="Decrease 0.05×" aria-label="Decrease speed by 0.05">−0.05</button>
+                <button id="speedToggleBtn" class="speed-toggle-btn" type="button" aria-expanded="false" aria-controls="speedConsole" title="More speed options">
+                  <span class="speed-toggle-label">Speed</span>
+                  <span id="speedCompactReadout" class="mono speed-compact-readout">1.00×</span>
+                  <svg class="ui-icon ui-icon-sm speed-toggle-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <button class="speed-step-btn" data-speed-delta="0.05" type="button" title="Increase 0.05×" aria-label="Increase speed by 0.05">+0.05</button>
+              </div>
+
               <!-- Granular Fractional Playback Speed Console -->
-              <div class="speed-console">
+              <div id="speedConsole" class="speed-console hidden">
                 <div class="speed-header">
                   <div>
                     <h3 class="speed-title">Precision Playback Speed</h3>
@@ -298,17 +309,17 @@
           <!-- Right Column: Chapters & Bookmarks Tabs -->
           <aside class="panel-column">
             <div class="panel-card">
-              <div class="panel-tabs" role="tablist">
-                <button id="tabChaptersBtn" class="panel-tab active" type="button" role="tab" aria-selected="true">
+              <div class="panel-tabs" role="tablist" aria-label="Book contents">
+                <button id="tabChaptersBtn" class="panel-tab active" type="button" role="tab" aria-selected="true" aria-controls="chaptersPanel" tabindex="0">
                   Chapters <span id="chaptersCountBadge" class="tab-count">0</span>
                 </button>
-                <button id="tabBookmarksBtn" class="panel-tab" type="button" role="tab" aria-selected="false">
+                <button id="tabBookmarksBtn" class="panel-tab" type="button" role="tab" aria-selected="false" aria-controls="bookmarksPanel" tabindex="-1">
                   Bookmarks <span id="bookmarksCountBadge" class="tab-count">0</span>
                 </button>
               </div>
 
               <!-- Chapters Panel -->
-              <div id="chaptersPanel" class="tab-panel">
+              <div id="chaptersPanel" class="tab-panel" role="tabpanel" aria-labelledby="tabChaptersBtn">
                 <div class="panel-toolbar">
                   <div class="search-box search-box-sm">
                     <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -323,7 +334,7 @@
               </div>
 
               <!-- Bookmarks Panel -->
-              <div id="bookmarksPanel" class="tab-panel hidden">
+              <div id="bookmarksPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabBookmarksBtn">
                 <div class="panel-toolbar bookmarks-toolbar">
                   <div class="search-box search-box-sm">
                     <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>

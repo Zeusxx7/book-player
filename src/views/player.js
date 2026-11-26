@@ -34,6 +34,7 @@ export function createPlayerView({
   let lastPlayerCoverKey = '';
   let lastMiniCoverKey = '';
   let isScrubbing = false;
+  let lastScrolledChapterKey = '';
 
   // Render static preset speed buttons once
   els.speedPresetsRow.innerHTML = '';
@@ -225,6 +226,33 @@ export function createPlayerView({
       const cIdx = Number(sub.dataset.subchapterIdx);
       sub.classList.toggle('active', tIdx === s.currentTrackIndex && cIdx === activeChIdx);
     }
+    scrollActiveChapterIntoView();
+  }
+
+  /**
+   * Keep the playing chapter visible in the list. Only scrolls when the active
+   * chapter changes (or when forced, e.g. on switching to the Chapters tab), so a
+   * re-render never yanks the list away from where the user scrolled.
+   */
+  function scrollActiveChapterIntoView({ force = false } = {}) {
+    const list = els.chaptersList;
+    if (list.offsetParent === null) return; // tab hidden; retry when shown
+
+    const active = list.querySelector('.subchapter-row.active') || list.querySelector('.chapter-row.active');
+    if (!active) return;
+    const key = `${player.book?.id}:${active.dataset.trackIdx}:${active.dataset.subchapterIdx ?? ''}`;
+    if (!force && key === lastScrolledChapterKey) return;
+    lastScrolledChapterKey = key;
+
+    const listRect = list.getBoundingClientRect();
+    const rowRect = active.getBoundingClientRect();
+    const outOfView = rowRect.top < listRect.top || rowRect.bottom > listRect.bottom;
+    if (outOfView) {
+      // Scroll only the list (not the page), centring the active row
+      const offset = rowRect.top - listRect.top - (listRect.height - rowRect.height) / 2;
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      list.scrollTo({ top: list.scrollTop + offset, behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
   }
 
   function renderTimeAndProgress(s) {
@@ -242,12 +270,17 @@ export function createPlayerView({
 
     els.currentTimeLabel.textContent = formatTime(cur);
     const rawRemaining = Math.max(0, dur - cur);
-    if (Math.abs(rate - 1.0) > 0.004 && rawRemaining > 0) {
-      const adjRemaining = calcSpeedAdjustedTime(rawRemaining, rate);
-      els.remainingTimeLabel.textContent = `−${formatTime(rawRemaining)} (${formatTime(adjRemaining)} at ${formatSpeed(rate)})`;
-    } else {
-      els.remainingTimeLabel.textContent = `−${formatTime(rawRemaining)}`;
-    }
+    // Show the real listening time left at the current speed; raw audio time goes in the tooltip
+    const isAdjusted = Math.abs(rate - 1.0) > 0.004 && rawRemaining > 0;
+    const shownRemaining = isAdjusted ? calcSpeedAdjustedTime(rawRemaining, rate) : rawRemaining;
+    els.remainingTimeLabel.textContent = `−${formatTime(shownRemaining)}`;
+    els.remainingTimeLabel.classList.toggle('is-adjusted', isAdjusted);
+    els.remainingTimeLabel.title = isAdjusted
+      ? `${formatTime(shownRemaining)} left at ${formatSpeed(rate)} (${formatTime(rawRemaining)} of audio)`
+      : `${formatTime(rawRemaining)} left`;
+
+    const chapterPct = dur > 0 ? Math.min(100, (cur / dur) * 100) : 0;
+    els.playerView.style.setProperty('--track-progress', `${chapterPct}%`);
 
     const bp = s.bookProgress;
     const pct = Math.round(bp.percent || 0);
@@ -269,6 +302,7 @@ export function createPlayerView({
     setRangeProgress(els.speedSlider, rate, MIN_SPEED, MAX_SPEED);
     els.pinSpeedBtn.textContent = `+ Pin ${formatted}`;
     els.miniSpeedBadge.textContent = formatted;
+    els.speedCompactReadout.textContent = formatted;
 
     for (const btn of els.speedPresetsRow.querySelectorAll('[data-speed-preset]')) {
       const preset = Number(btn.dataset.speedPreset);
@@ -346,6 +380,8 @@ export function createPlayerView({
     }
 
     const query = state.chapterQuery.trim().toLowerCase();
+    // Rebuilding the list would otherwise reset its scroll position to the top
+    const previousScrollTop = els.chaptersList.scrollTop;
     els.chaptersList.innerHTML = '';
 
     const activeEmbedded = player.getCurrentEmbeddedChapter();
@@ -409,6 +445,9 @@ export function createPlayerView({
         els.chaptersList.appendChild(subList);
       }
     });
+
+    els.chaptersList.scrollTop = previousScrollTop;
+    scrollActiveChapterIntoView();
   }
 
   function renderBookmarksPanel() {
@@ -518,5 +557,6 @@ export function createPlayerView({
     renderChaptersList,
     renderBookmarksPanel,
     updateMiniPlayer,
+    scrollActiveChapterIntoView,
   };
 }

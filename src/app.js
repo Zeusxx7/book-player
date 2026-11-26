@@ -118,6 +118,9 @@ const els = {
   volumeRange: document.getElementById('volumeRange'),
 
   pitchToggleInput: document.getElementById('pitchToggleInput'),
+  speedToggleBtn: document.getElementById('speedToggleBtn'),
+  speedCompactReadout: document.getElementById('speedCompactReadout'),
+  speedConsole: document.getElementById('speedConsole'),
   speedReadoutBtn: document.getElementById('speedReadoutBtn'),
   speedExactInput: document.getElementById('speedExactInput'),
   resetSpeedBtn: document.getElementById('resetSpeedBtn'),
@@ -219,15 +222,30 @@ function switchView(view) {
   playerView.updateMiniPlayer();
 }
 
-function switchPanelTab(tab) {
+function switchPanelTab(tab, { focus = false } = {}) {
   state.activeTab = tab;
   const isChapters = tab === 'chapters';
   els.tabChaptersBtn.classList.toggle('active', isChapters);
   els.tabBookmarksBtn.classList.toggle('active', !isChapters);
   els.tabChaptersBtn.setAttribute('aria-selected', String(isChapters));
   els.tabBookmarksBtn.setAttribute('aria-selected', String(!isChapters));
+  // Roving tabindex: only the selected tab is in the Tab order
+  els.tabChaptersBtn.tabIndex = isChapters ? 0 : -1;
+  els.tabBookmarksBtn.tabIndex = isChapters ? -1 : 0;
   els.chaptersPanel.classList.toggle('hidden', !isChapters);
   els.bookmarksPanel.classList.toggle('hidden', isChapters);
+  if (focus) {
+    (isChapters ? els.tabChaptersBtn : els.tabBookmarksBtn).focus();
+  }
+  if (isChapters) {
+    playerView?.scrollActiveChapterIntoView({ force: true });
+  }
+}
+
+function setSpeedConsoleOpen(open) {
+  els.speedConsole.classList.toggle('hidden', !open);
+  els.speedToggleBtn.setAttribute('aria-expanded', String(open));
+  els.speedToggleBtn.classList.toggle('open', open);
 }
 
 let modals;
@@ -500,6 +518,11 @@ function wireEvents() {
   els.sleepTimerSelect.addEventListener('change', (e) => {
     player.setSleepTimer(e.target.value);
   });
+  els.sleepCountdownPill.addEventListener('click', () => {
+    if (player.extendSleepTimer(5)) {
+      notify('Sleep timer extended by 5 minutes');
+    }
+  });
   els.muteBtn.addEventListener('click', () => player.toggleMute());
   els.volumeRange.addEventListener('input', (e) => player.setVolume(Number(e.target.value)));
 
@@ -511,6 +534,12 @@ function wireEvents() {
   });
 
   els.resetSpeedBtn.addEventListener('click', () => player.setSpeed(1.0));
+
+  els.speedToggleBtn.addEventListener('click', () => {
+    const open = els.speedConsole.classList.contains('hidden');
+    setSpeedConsoleOpen(open);
+    setSetting('speedConsoleOpen', open).catch(() => {});
+  });
   els.pitchToggleInput.addEventListener('change', (e) => player.setPreservesPitch(e.target.checked));
 
   els.speedReadoutBtn.addEventListener('click', () => {
@@ -555,6 +584,20 @@ function wireEvents() {
   // Panel Tabs & Filters
   els.tabChaptersBtn.addEventListener('click', () => switchPanelTab('chapters'));
   els.tabBookmarksBtn.addEventListener('click', () => switchPanelTab('bookmarks'));
+  // WAI-ARIA tabs pattern: arrow keys / Home / End move between tabs
+  els.tabChaptersBtn.parentElement.addEventListener('keydown', (e) => {
+    const tabs = ['chapters', 'bookmarks'];
+    const idx = tabs.indexOf(state.activeTab);
+    let next = null;
+    if (e.key === 'ArrowRight') next = tabs[(idx + 1) % tabs.length];
+    else if (e.key === 'ArrowLeft') next = tabs[(idx - 1 + tabs.length) % tabs.length];
+    else if (e.key === 'Home') next = tabs[0];
+    else if (e.key === 'End') next = tabs[tabs.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    e.stopPropagation(); // don't also seek via the global ArrowLeft/Right shortcuts
+    switchPanelTab(next, { focus: true });
+  });
   els.chapterSearchInput.addEventListener('input', (e) => {
     state.chapterQuery = e.target.value;
     playerView.renderChaptersList();
@@ -661,11 +704,13 @@ function wireEvents() {
       return;
     }
     if (detail.mode === 'timer' && detail.remainingMs > 0) {
-      els.sleepCountdownPill.textContent = formatTime(Math.ceil(detail.remainingMs / 1000));
+      els.sleepCountdownPill.disabled = false;
+      els.sleepCountdownPill.textContent = `${formatTime(Math.ceil(detail.remainingMs / 1000))} +5`;
       els.sleepCountdownPill.classList.remove('hidden');
     } else if (detail.mode === 'end-of-chapter') {
       els.sleepCountdownPill.textContent = 'Ch End';
       els.sleepCountdownPill.classList.remove('hidden');
+      els.sleepCountdownPill.disabled = true; // +5 min only applies to a running timer
     } else {
       els.sleepTimerSelect.value = 'off';
       els.sleepCountdownPill.classList.add('hidden');
@@ -802,6 +847,7 @@ async function init() {
     if (typeof settings.preservesPitch === 'boolean') {
       player.preservesPitch = settings.preservesPitch;
     }
+    setSpeedConsoleOpen(settings.speedConsoleOpen === true);
     if (typeof settings.lastPlaybackRate === 'number') {
       player.playbackRate = clampSpeed(settings.lastPlaybackRate);
     }

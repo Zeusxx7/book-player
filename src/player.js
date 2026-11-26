@@ -1,6 +1,9 @@
 import { clampSpeed, DEFAULT_SPEED, normalizeAudioMime, stepSpeed } from './formats.js';
 import { getAudioBlob, setSetting, updateBook, updateTrack } from './db.js';
 
+// Volume fades to silence over this window before the sleep timer pauses playback
+const SLEEP_FADE_MS = 15000;
+
 export class LectioPlayer extends EventTarget {
   constructor() {
     super();
@@ -189,6 +192,7 @@ export class LectioPlayer extends EventTarget {
       }
 
       this._syncEmbeddedChapterOnTime(this.currentTime);
+      this._applySleepFade();
 
       const now = Date.now();
       if (now - this._lastPersistAt >= 3000) {
@@ -609,7 +613,7 @@ export class LectioPlayer extends EventTarget {
   setVolume(vol) {
     const clamped = Math.max(0, Math.min(1, Number(vol)));
     this.volume = Number.isFinite(clamped) ? clamped : 1;
-    this.audio.volume = this.volume;
+    this._applySleepFade(); // sets audio.volume, honouring any in-progress fade
     if (this.volume > 0 && this.muted) {
       this.muted = false;
       this.audio.muted = false;
@@ -654,12 +658,54 @@ export class LectioPlayer extends EventTarget {
         this._emit('sleeptimer', { triggered: true, mode: 'timer', remainingMs: 0 });
         this._emitStateChange('sleep');
       } else {
+        this._applySleepFade();
         this._emit('sleeptimer', { mode: 'timer', remainingMs: remaining });
       }
     }, 1000);
 
     this._emit('sleeptimer', { mode: 'timer', remainingMs: minutes * 60 * 1000 });
     this._emitStateChange('sleep');
+  }
+
+  /**
+   * Add minutes to a running countdown timer. Returns false when no countdown is
+   * active (e.g. "end of chapter" mode), so the caller can ignore the request.
+   */
+  extendSleepTimer(minutes = 5) {
+    if (this.sleepMode !== 'timer' || !this.sleepEndTime) return false;
+    this.sleepEndTime += minutes * 60 * 1000;
+    this._applySleepFade();
+    this._emit('sleeptimer', { mode: 'timer', remainingMs: this.sleepEndTime - Date.now() });
+    return true;
+  }
+
+  /** Real (wall-clock) milliseconds until the sleep timer stops playback, or null. */
+  _sleepRemainingMs() {
+    if (this.sleepMode === 'timer' && this.sleepEndTime) {
+      return Math.max(0, this.sleepEndTime - Date.now());
+    }
+    if (this.sleepMode === 'end-of-chapter') {
+      const targetCh = this._sleepTargetChapterIndex !== null
+        ? this.getEmbeddedChapters()[this._sleepTargetChapterIndex]
+        : null;
+      const end = targetCh?.endTime ?? this.duration;
+      if (!Number.isFinite(end) || end <= 0) return null;
+      const audioSecondsLeft = Math.max(0, end - (this.currentTime || 0));
+      return (audioSecondsLeft / clampSpeed(this.playbackRate)) * 1000;
+    }
+    return null;
+  }
+
+  /** Fade volume out over the final seconds before the sleep timer pauses playback. */
+  _applySleepFade() {
+    const remaining = this._sleepRemainingMs();
+    const factor = remaining !== null && remaining < SLEEP_FADE_MS
+      ? Math.max(0, remaining / SLEEP_FADE_MS)
+      : 1;
+    const target = this.volume * factor;
+    if (Math.abs(this.audio.volume - target) > 0.001) {
+      this.audio.volume = target;
+    }
   }
 
   clearSleepTimer(emit = true) {
@@ -670,6 +716,8 @@ export class LectioPlayer extends EventTarget {
     this.sleepMode = 'off';
     this.sleepEndTime = null;
     this._sleepTargetChapterIndex = null;
+    // Undo any fade so the next play starts at the user's volume
+    this.audio.volume = this.volume;
     if (emit) {
       this._emit('sleeptimer', { mode: 'off', remainingMs: 0 });
       this._emitStateChange('sleep');

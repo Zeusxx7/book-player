@@ -989,6 +989,11 @@ textarea:focus {
   text-align: right;
 }
 
+/* Remaining time already adjusted for playback speed */
+.remaining-label.is-adjusted {
+  color: var(--accent);
+}
+
 /* Transport Controls */
 .transport-row {
   display: flex;
@@ -1104,6 +1109,9 @@ textarea:focus {
 }
 
 .sleep-pill {
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
@@ -1124,8 +1132,64 @@ textarea:focus {
   height: 4px;
 }
 
+/* Compact speed control — the full console is a disclosure below it */
+.speed-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.speed-compact-row .speed-step-btn {
+  background: var(--bg-surface);
+  border-color: var(--border);
+}
+
+.speed-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+  box-shadow: var(--inner-highlight);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.speed-toggle-btn:hover,
+.speed-toggle-btn.open {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.speed-toggle-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.speed-compact-readout {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 5.2ch;
+  text-align: center;
+}
+
+.speed-toggle-chevron {
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.speed-toggle-btn.open .speed-toggle-chevron {
+  transform: rotate(180deg);
+}
+
 /* Precision Speed Console */
 .speed-console {
+  margin-top: 14px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -2105,5 +2169,52 @@ kbd {
 
   .speed-scale-ticks {
     padding: 4px 28px 0;
+  }
+}
+
+.sleep-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.sleep-pill:disabled {
+  cursor: default;
+}
+
+/* Phones: pin the transport to the bottom of the screen while the chapter list scrolls */
+@media (max-width: 640px) {
+  .transport-row {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    margin: 0;
+    gap: 10px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  /* Thin chapter-progress line along the top edge of the pinned bar */
+  .transport-row::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 0;
+    height: 2px;
+    width: var(--track-progress, 0%);
+    background: var(--accent);
+  }
+
+  .play-btn {
+    width: 56px;
+    height: 56px;
+  }
+
+  /* Keep toasts above the pinned bar */
+  .toast-container {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }

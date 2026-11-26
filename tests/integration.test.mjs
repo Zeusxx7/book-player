@@ -233,3 +233,42 @@ test('LectioPlayer handles auto-advance, book-switch persistence, slider non-per
 
   await player.unloadBook({ persist: false });
 });
+
+test('sleep timer fades volume before stopping, can be extended, and restores volume', async () => {
+  const player = new LectioPlayer();
+  player.setVolume(0.8);
+
+  // Countdown timer: +5 min extends the end time; extension is refused when no timer runs
+  assert.equal(player.extendSleepTimer(5), false);
+  player.setSleepTimer('10');
+  const originalEnd = player.sleepEndTime;
+  assert.equal(player.extendSleepTimer(5), true);
+  assert.equal(player.sleepEndTime - originalEnd, 5 * 60 * 1000);
+
+  // Far from the end: full volume
+  player._applySleepFade();
+  assert.equal(player.audio.volume, 0.8);
+
+  // 7.5s left of the 15s fade window: half volume
+  player.sleepEndTime = Date.now() + 7500;
+  player._applySleepFade();
+  assert.ok(Math.abs(player.audio.volume - 0.4) < 0.02, `volume was ${player.audio.volume}`);
+
+  // Changing volume mid-fade keeps the fade applied
+  player.setVolume(0.6);
+  assert.ok(player.audio.volume < 0.6);
+
+  // Clearing the timer restores the user's volume
+  player.clearSleepTimer(false);
+  assert.equal(player.audio.volume, 0.6);
+
+  // End-of-chapter mode fades by real time left, accounting for playback speed
+  player.sleepMode = 'end-of-chapter';
+  player._sleepTargetChapterIndex = null;
+  player.duration = 100;
+  player.currentTime = 85; // 15s of audio left
+  player.playbackRate = 2; // = 7.5s of real time
+  player._applySleepFade();
+  assert.ok(Math.abs(player.audio.volume - 0.3) < 0.02, `volume was ${player.audio.volume}`);
+  player.clearSleepTimer(false);
+});
