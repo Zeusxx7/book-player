@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Lectio — Textbook &amp; Audiobook Player</title>
+  <meta name="description" content="Offline Progressive Web App audiobook player for multi-file textbooks with ultra-granular playback speed and study bookmarks." />
+  <meta name="theme-color" content="#0f1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles/app.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <!-- Top App Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="brandBtn" class="brand" type="button" title="Lectio Library">
+          <img src="./icons/icon.svg" alt="" class="brand-icon" width="30" height="30" />
+          <span class="brand-name">Lectio</span>
+          <span class="brand-tag">Textbook Audio</span>
+        </button>
+
+        <nav class="nav-pills" aria-label="Primary">
+          <button id="navLibraryBtn" class="nav-pill active" type="button">Library</button>
+          <button id="navPlayerBtn" class="nav-pill" type="button" disabled>Now Playing</button>
+        </nav>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="installAppBtn" class="btn btn-accent btn-sm hidden" type="button">
+          Install App
+        </button>
+        <button id="shortcutsBtn" class="icon-btn" type="button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
+          <span>?</span>
+        </button>
+        <button id="themeToggleBtn" class="icon-btn" type="button" title="Toggle Theme" aria-label="Toggle Theme">
+          <span id="themeIcon">☀</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Hidden File Inputs -->
+    <input id="folderInput" type="file" webkitdirectory directory multiple class="sr-only" />
+    <input id="filesInput" type="file" multiple class="sr-only" />
+    <input id="appendFolderInput" type="file" webkitdirectory directory multiple class="sr-only" />
+    <input id="appendFilesInput" type="file" multiple class="sr-only" />
+    <input id="importBookmarksInput" type="file" accept=".json,application/json" class="sr-only" />
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- LIBRARY VIEW -->
+      <section id="libraryView" class="view">
+        <div id="dropZone" class="upload-hero" tabindex="0" aria-label="Upload textbook folder or audio files">
+          <div class="upload-hero-inner">
+            <div class="upload-badge">Offline-First Textbook Player</div>
+            <h1>Drop a textbook folder or load chapters</h1>
+            <p class="upload-subtitle">
+              Recursively imports nested chapter folders, sorts parts naturally, preserves your exact fractional speed, and stores everything locally in your browser.
+            </p>
+            <div class="upload-cta-row">
+              <button id="uploadFolderBtn" class="btn btn-primary" type="button">
+                Upload Textbook Folder
+              </button>
+              <button id="uploadFilesBtn" class="btn btn-secondary" type="button">
+                Add Audio Files
+              </button>
+            </div>
+            <div class="format-chips" aria-label="Supported audio formats">
+              <span class="chip">MP3</span>
+              <span class="chip">M4A</span>
+              <span class="chip">M4B</span>
+              <span class="chip">OGG</span>
+              <span class="chip">OPUS</span>
+              <span class="chip">FLAC</span>
+              <span class="chip">WAV</span>
+              <span class="chip">AAC</span>
+              <span class="chip">AIFF</span>
+              <span class="chip">WEBM</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="library-toolbar">
+          <div class="search-box">
+            <input id="librarySearchInput" type="search" placeholder="Search textbooks or authors…" aria-label="Search textbooks" />
+          </div>
+          <div id="storageInfo" class="storage-pill">Checking local storage…</div>
+        </div>
+
+        <div id="libraryEmpty" class="empty-state hidden">
+          <h2>Your textbook shelf is empty</h2>
+          <p>Upload a folder containing your textbook chapters (<code>.m4a</code>, <code>.mp3</code>, <code>.m4b</code>, <code>.opus</code>, etc.) to start studying offline.</p>
+        </div>
+
+        <div id="booksGrid" class="books-grid"></div>
+      </section>
+
+      <!-- PLAYER VIEW -->
+      <section id="playerView" class="view hidden">
+        <div class="player-layout">
+          <!-- Left Column: Player & Precision Speed Console -->
+          <div class="player-column">
+            <article class="player-card">
+              <div class="player-book-header">
+                <div id="playerCoverWrap" class="player-cover-wrap"></div>
+                <div class="player-book-meta">
+                  <div class="player-meta-top">
+                    <button id="backToLibraryBtn" class="link-btn" type="button">← Library</button>
+                    <span id="playerChapterBadge" class="chapter-badge">Chapter 1 / 1</span>
+                  </div>
+                  <h2 id="playerBookTitle" class="player-book-title">Textbook Title</h2>
+                  <p id="playerSectionName" class="player-section-name hidden"></p>
+                  <p id="playerTrackTitle" class="player-track-title">Track Title</p>
+
+                  <div class="book-progress-wrap">
+                    <div class="book-progress-bar">
+                      <div id="bookProgressFill" class="book-progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="book-progress-labels">
+                      <span id="bookProgressText">0% complete</span>
+                      <span id="bookRemainingText">0m left</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Scrub Bar with Bookmark Markers -->
+              <div class="scrubber-section">
+                <div class="scrubber-track-wrap">
+                  <div id="scrubMarkers" class="scrub-markers" aria-hidden="false"></div>
+                  <input
+                    id="scrubRange"
+                    class="scrub-range"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="0"
+                    aria-label="Chapter playback position"
+                  />
+                </div>
+                <div class="timecode-row">
+                  <span id="currentTimeLabel" class="mono">0:00</span>
+                  <span id="remainingTimeLabel" class="mono remaining-label">−0:00</span>
+                </div>
+              </div>
+
+              <!-- Main Transport -->
+              <div class="transport-row">
+                <button id="prevTrackBtn" class="transport-btn" type="button" title="Previous Chapter (Shift + ←)" aria-label="Previous Chapter">
+                  ⏮
+                </button>
+                <button id="skipBackBtn" class="transport-btn skip-btn" type="button" title="Back 15s (←)" aria-label="Skip back 15 seconds">
+                  −15s
+                </button>
+                <button id="playPauseBtn" class="play-btn" type="button" title="Play / Pause (Space)" aria-label="Play or Pause">
+                  ▶
+                </button>
+                <button id="skipFwdBtn" class="transport-btn skip-btn" type="button" title="Forward 30s (→)" aria-label="Skip forward 30 seconds">
+                  +30s
+                </button>
+                <button id="nextTrackBtn" class="transport-btn" type="button" title="Next Chapter (Shift + →)" aria-label="Next Chapter">
+                  ⏭
+                </button>
+              </div>
+
+              <!-- Bookmark & Utility Actions -->
+              <div class="secondary-actions">
+                <button id="quickBookmarkBtn" class="btn btn-secondary btn-sm" type="button" title="Quick Bookmark (B)">
+                  ★ Quick Bookmark
+                </button>
+                <button id="noteBookmarkBtn" class="btn btn-accent btn-sm" type="button" title="Bookmark with Note (Shift + B)">
+                  + Bookmark &amp; Note
+                </button>
+
+                <div class="utility-controls">
+                  <label class="sleep-control" title="Sleep Timer">
+                    <span class="utility-label">Sleep</span>
+                    <select id="sleepTimerSelect" aria-label="Sleep Timer">
+                      <option value="off">Off</option>
+                      <option value="5">5m</option>
+                      <option value="15">15m</option>
+                      <option value="30">30m</option>
+                      <option value="45">45m</option>
+                      <option value="60">60m</option>
+                      <option value="end-of-chapter">End of Chapter</option>
+                    </select>
+                  </label>
+                  <span id="sleepCountdownPill" class="sleep-pill hidden"></span>
+
+                  <div class="volume-control">
+                    <button id="muteBtn" class="icon-btn btn-xs" type="button" title="Mute / Unmute (M)" aria-label="Mute">
+                      🔊
+                    </button>
+                    <input id="volumeRange" type="range" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Granular Fractional Playback Speed Console -->
+              <div class="speed-console">
+                <div class="speed-header">
+                  <div>
+                    <h3 class="speed-title">Precision Playback Speed</h3>
+                    <span class="speed-subtitle">0.01× granular steps · 0.25× to 4.00×</span>
+                  </div>
+                  <label class="pitch-toggle">
+                    <input id="pitchToggleInput" type="checkbox" checked />
+                    <span>Keep Natural Pitch</span>
+                  </label>
+                </div>
+
+                <div class="speed-stepper-row">
+                  <button class="speed-step-btn" data-speed-delta="-0.10" type="button" title="Decrease 0.10× (Shift + [)">−0.10</button>
+                  <button class="speed-step-btn" data-speed-delta="-0.05" type="button" title="Decrease 0.05×">−0.05</button>
+                  <button class="speed-step-btn accent-step" data-speed-delta="-0.01" type="button" title="Decrease 0.01× ([)">−0.01</button>
+
+                  <div class="speed-readout-wrap">
+                    <button id="speedReadoutBtn" class="speed-readout-btn mono" type="button" title="Click to type exact fractional speed (e.g. 1.375)">
+                      1.00×
+                    </button>
+                    <input
+                      id="speedExactInput"
+                      class="speed-exact-input mono hidden"
+                      type="number"
+                      min="0.25"
+                      max="4.00"
+                      step="0.001"
+                      aria-label="Exact playback speed"
+                    />
+                  </div>
+
+                  <button class="speed-step-btn accent-step" data-speed-delta="0.01" type="button" title="Increase 0.01× (])">+0.01</button>
+                  <button class="speed-step-btn" data-speed-delta="0.05" type="button" title="Increase 0.05×">+0.05</button>
+                  <button class="speed-step-btn" data-speed-delta="0.10" type="button" title="Increase 0.10× (Shift + ])">+0.10</button>
+                  <button id="resetSpeedBtn" class="speed-reset-btn" type="button" title="Reset to 1.00× (0)">1.00×</button>
+                </div>
+
+                <div class="speed-slider-row">
+                  <span class="mono speed-bound">0.25×</span>
+                  <input
+                    id="speedSlider"
+                    class="speed-slider"
+                    type="range"
+                    min="0.25"
+                    max="4.00"
+                    step="0.01"
+                    value="1.00"
+                    aria-label="Fractional playback speed slider"
+                  />
+                  <span class="mono speed-bound">4.00×</span>
+                </div>
+
+                <div class="speed-presets-section">
+                  <div id="speedPresetsRow" class="speed-presets-row"></div>
+                  <div class="pinned-speeds-row">
+                    <button id="pinSpeedBtn" class="pin-speed-btn" type="button">+ Pin 1.00×</button>
+                    <div id="pinnedSpeedsList" class="pinned-speeds-list"></div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Right Column: Chapters & Bookmarks Tabs -->
+          <aside class="panel-column">
+            <div class="panel-card">
+              <div class="panel-tabs" role="tablist">
+                <button id="tabChaptersBtn" class="panel-tab active" type="button" role="tab" aria-selected="true">
+                  Chapters <span id="chaptersCountBadge" class="tab-count">0</span>
+                </button>
+                <button id="tabBookmarksBtn" class="panel-tab" type="button" role="tab" aria-selected="false">
+                  Bookmarks <span id="bookmarksCountBadge" class="tab-count">0</span>
+                </button>
+              </div>
+
+              <!-- Chapters Panel -->
+              <div id="chaptersPanel" class="tab-panel">
+                <div class="panel-toolbar">
+                  <input id="chapterSearchInput" type="search" placeholder="Filter chapters…" aria-label="Filter chapters" />
+                  <div class="panel-btn-group">
+                    <button id="appendFolderBtn" class="btn btn-secondary btn-xs" type="button">+ Folder</button>
+                    <button id="appendFilesBtn" class="btn btn-secondary btn-xs" type="button">+ Files</button>
+                  </div>
+                </div>
+                <div id="chaptersList" class="chapters-list"></div>
+              </div>
+
+              <!-- Bookmarks Panel -->
+              <div id="bookmarksPanel" class="tab-panel hidden">
+                <div class="panel-toolbar bookmarks-toolbar">
+                  <input id="bookmarkSearchInput" type="search" placeholder="Search notes or timestamps…" aria-label="Search bookmarks" />
+                  <select id="bookmarkSortSelect" aria-label="Sort bookmarks">
+                    <option value="position">Book Order</option>
+                    <option value="newest">Newest First</option>
+                  </select>
+                </div>
+
+                <div id="bookmarkFilterChips" class="filter-chips"></div>
+
+                <div class="bookmark-io-row">
+                  <button id="exportBookmarksMdBtn" class="btn btn-secondary btn-xs" type="button">Export .md</button>
+                  <button id="exportBookmarksJsonBtn" class="btn btn-secondary btn-xs" type="button">Export .json</button>
+                  <button id="importBookmarksJsonBtn" class="btn btn-secondary btn-xs" type="button">Import .json</button>
+                </div>
+
+                <div id="bookmarksList" class="bookmarks-list"></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <!-- Sticky Mini Player (visible in Library view when a book is loaded) -->
+    <div id="miniPlayer" class="mini-player hidden">
+      <div class="mini-player-info" id="miniPlayerOpenBtn" role="button" tabindex="0">
+        <div id="miniCover" class="mini-cover"></div>
+        <div class="mini-text">
+          <div id="miniBookTitle" class="mini-book-title"></div>
+          <div id="miniTrackTitle" class="mini-track-title"></div>
+        </div>
+      </div>
+      <div class="mini-player-controls">
+        <span id="miniSpeedBadge" class="chip mono">1.00×</span>
+        <button id="miniBookmarkBtn" class="btn btn-secondary btn-xs" type="button" title="Quick Bookmark">★</button>
+        <button id="miniPlayPauseBtn" class="btn btn-primary btn-sm" type="button">▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Drag-and-Drop Overlay -->
+  <div id="dragOverlay" class="drag-overlay hidden" aria-hidden="true">
+    <div class="drag-overlay-box">
+      <div class="drag-overlay-icon">📚</div>
+      <h2>Drop textbook folder or audio files</h2>
+      <p>Supports M4A, M4B, MP3, OGG, OPUS, FLAC, WAV, AAC, AIFF, WEBM</p>
+    </div>
+  </div>
+
+  <!-- Import Progress Modal -->
+  <div id="importModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+    <div class="modal-card">
+      <h3 id="importModalTitle">Importing Textbook Audio…</h3>
+      <p id="importStatusText" class="modal-subtitle">Preparing files…</p>
+      <div class="progress-bar-lg">
+        <div id="importProgressBar" class="progress-bar-lg-fill" style="width: 0%"></div>
+      </div>
+      <p id="importFileText" class="mono import-filename"></p>
+    </div>
+  </div>
+
+  <!-- Bookmark Create / Edit Modal -->
+  <div id="bookmarkModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="bookmarkModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="bookmarkModalTitle">Add Study Bookmark</h3>
+        <button id="closeBookmarkModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+      </div>
+      <form id="bookmarkForm" class="modal-form">
+        <div class="form-group">
+          <label>Timestamp in <span id="bmTrackLabel" class="strong-inline"></span></label>
+          <div class="timestamp-nudge-row">
+            <button id="bmNudgeBackBtn" class="btn btn-secondary btn-xs" type="button">−5s</button>
+            <span id="bmTimeReadout" class="mono timestamp-pill">0:00</span>
+            <button id="bmNudgeFwdBtn" class="btn btn-secondary btn-xs" type="button">+5s</button>
+            <button id="bmUseCurrentBtn" class="btn btn-secondary btn-xs" type="button">Use Current</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="bmTitleInput">Bookmark Title</label>
+          <input id="bmTitleInput" type="text" placeholder="e.g., Key theorem proof or definition" />
+        </div>
+
+        <div class="form-group">
+          <label>Category</label>
+          <div id="bmCategoryPills" class="category-pills"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="bmNoteInput">Study Note</label>
+          <textarea id="bmNoteInput" rows="4" placeholder="Write key takeaways, page references, or exam reminders…"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button id="cancelBookmarkBtn" class="btn btn-secondary" type="button">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save Bookmark</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Book Edit Modal -->
+  <div id="bookEditModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="bookEditModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="bookEditModalTitle">Edit Textbook Details</h3>
+        <button id="closeBookEditModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+      </div>
+      <form id="bookEditForm" class="modal-form">
+        <div class="form-group">
+          <label for="editBookTitleInput">Textbook Title</label>
+          <input id="editBookTitleInput" type="text" required />
+        </div>
+        <div class="form-group">
+          <label for="editBookAuthorInput">Author / Instructor</label>
+          <input id="editBookAuthorInput" type="text" />
+        </div>
+        <div class="modal-actions">
+          <button id="cancelBookEditBtn" class="btn btn-secondary" type="button">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcutsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="shortcutsModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="shortcutsModalTitle">Keyboard Shortcuts</h3>
+        <button id="closeShortcutsBtn" class="icon-btn btn-xs" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-item"><kbd>←</kbd> / <kbd>→</kbd><span>Skip −15s / +30s</span></div>
+        <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd><span>Previous / Next Chapter</span></div>
+        <div class="shortcut-item"><kbd>[</kbd> / <kbd>]</kbd><span>Speed −0.01× / +0.01×</span></div>
+        <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>[</kbd> / <kbd>]</kbd><span>Speed −0.10× / +0.10×</span></div>
+        <div class="shortcut-item"><kbd>0</kbd><span>Reset Speed to 1.00×</span></div>
+        <div class="shortcut-item"><kbd>B</kbd><span>Quick Bookmark</span></div>
+        <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>B</kbd><span>Bookmark with Note</span></div>
+        <div class="shortcut-item"><kbd>M</kbd><span>Mute / Unmute</span></div>
+        <div class="shortcut-item"><kbd>?</kbd><span>Toggle Shortcuts</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

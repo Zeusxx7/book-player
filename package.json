@@ -1,0 +1,11 @@
+{
+  "name": "lectio-audiobook-player",
+  "version": "1.0.0",
+  "description": "Progressive Web App audiobook and textbook player with multi-file folder upload, fractional speed control, and study bookmarks.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/core.test.mjs"
+  }
+}
