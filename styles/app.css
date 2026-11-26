@@ -762,6 +762,12 @@ textarea:focus {
   align-items: start;
 }
 
+.player-column,
+.panel-column {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .player-card,
 .panel-card {
   background: var(--bg-elevated);
@@ -769,6 +775,8 @@ textarea:focus {
   border-radius: var(--radius-lg);
   padding: 24px;
   box-shadow: var(--inner-highlight), var(--shadow);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .player-book-header {
@@ -801,10 +809,12 @@ textarea:focus {
 .player-book-meta {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .player-meta-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -819,6 +829,10 @@ textarea:focus {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   color: var(--text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-book-title {
@@ -826,6 +840,7 @@ textarea:focus {
   font-family: var(--font-serif);
   font-size: 1.38rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .player-section-name {
@@ -835,12 +850,14 @@ textarea:focus {
   letter-spacing: 0.08em;
   color: var(--accent);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .player-track-title {
   margin: 0 0 14px;
   color: var(--text-muted);
   font-size: 0.94rem;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1504,6 +1521,8 @@ textarea:focus {
   gap: 10px;
   overflow: hidden;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .panel-toolbar {
@@ -1569,10 +1588,13 @@ textarea:focus {
 .chapters-list,
 .bookmarks-list {
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding-right: 4px;
+  min-width: 0;
+  max-width: 100%;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -1595,6 +1617,7 @@ textarea:focus {
   letter-spacing: 0.08em;
   color: var(--accent);
   padding: 8px 6px 2px;
+  overflow-wrap: anywhere;
 }
 
 .chapter-row {
@@ -1607,6 +1630,9 @@ textarea:focus {
   border: 1px solid transparent;
   text-align: left;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   transition: background 0.12s, border-color 0.12s;
 }
 
@@ -1635,6 +1661,8 @@ textarea:focus {
 }
 
 .chapter-title {
+  display: block;
+  max-width: 100%;
   font-size: 0.89rem;
   font-weight: 600;
   white-space: nowrap;
@@ -1674,6 +1702,8 @@ textarea:focus {
   margin: 2px 0 6px 20px;
   padding-left: 10px;
   border-left: 2px solid var(--border);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .subchapter-row {
@@ -1687,6 +1717,9 @@ textarea:focus {
   border: 1px solid transparent;
   text-align: left;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   font-size: 0.82rem;
   color: var(--text-muted);
 }
@@ -1704,6 +1737,8 @@ textarea:focus {
 }
 
 .subchapter-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1724,6 +1759,8 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .bookmark-card-top {
@@ -1761,11 +1798,13 @@ textarea:focus {
 .bookmark-title {
   font-size: 0.92rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .bookmark-chapter-sub {
   font-size: 0.76rem;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .bookmark-note {
@@ -1774,6 +1813,7 @@ textarea:focus {
   color: var(--text-muted);
   line-height: 1.45;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .bookmark-actions {
@@ -2129,7 +2169,7 @@ kbd {
 /* Responsive */
 @media (max-width: 960px) {
   .player-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
 
@@ -2227,6 +2267,8 @@ kbd {
 
   .player-track-title {
     white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2395,8 +2437,28 @@ kbd {
     min-height: 48px;
   }
 
+  .chapter-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .subchapter-list {
+    margin-left: 12px;
+  }
+
   .subchapter-row {
     min-height: 40px;
+  }
+
+  .subchapter-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
   .bookmark-jump-btn,

@@ -176,9 +176,11 @@ export function createPlayerView({
 
     els.playerBookTitle.textContent = s.book.title;
     const embeddedCh = s.currentEmbeddedChapter;
-    els.playerTrackTitle.textContent = embeddedCh
+    const trackTitleText = embeddedCh
       ? `${s.currentTrack?.title || ''} — ${embeddedCh.title}`
       : (s.currentTrack?.title || 'No chapter loaded');
+    els.playerTrackTitle.textContent = trackTitleText;
+    els.playerTrackTitle.title = trackTitleText;
 
     const chapters = player.getEmbeddedChapters();
     if (chapters.length > 0 && embeddedCh) {
@@ -413,7 +415,7 @@ export function createPlayerView({
       row.innerHTML = `
         <span class="chapter-num">${isActive && player.isPlaying ? EQ_BARS_MARKUP : idx + 1}</span>
         <div class="chapter-info">
-          <div class="chapter-title">${escapeHtml(track.title)}</div>
+          <div class="chapter-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</div>
           <div class="chapter-sub">
             <span class="format-tag">${escapeHtml(track.format || 'AUDIO')}</span>
             ${chapters.length > 0 ? `<span>${chapters.length} chapters</span>` : ''}
@@ -437,7 +439,7 @@ export function createPlayerView({
           subRow.dataset.subchapterIdx = String(ch.index);
           subRow.dataset.subchapterTime = String(ch.startTime);
           subRow.innerHTML = `
-            <span class="subchapter-title">${escapeHtml(ch.title)}</span>
+            <span class="subchapter-title" title="${escapeHtml(ch.title)}">${escapeHtml(ch.title)}</span>
             <span class="subchapter-time">${formatTime(ch.startTime)}</span>
           `;
           subList.appendChild(subRow);
