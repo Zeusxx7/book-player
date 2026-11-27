@@ -21,6 +21,8 @@ export const ICONS = {
   sleep: '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>',
   download: '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
   sparkle: '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"/></svg>',
+  copy: '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
 };
 
 export const EQ_BARS_MARKUP = '<span class="eq-bars" aria-hidden="true"><i></i><i></i><i></i></span>';
@@ -79,25 +81,55 @@ export function showToast(container, message, options = {}) {
   textSpan.textContent = message;
   toast.appendChild(textSpan);
 
+  const actions = document.createElement('div');
+  actions.className = 'toast-actions';
+
   if (actionLabel && typeof onAction === 'function') {
-    const actions = document.createElement('div');
-    actions.className = 'toast-actions';
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-accent btn-xs';
     btn.textContent = actionLabel;
     btn.addEventListener('click', () => {
+      clearTimeout(timer);
       onAction();
       toast.remove();
     });
     actions.appendChild(btn);
-    toast.appendChild(actions);
   }
 
-  container.appendChild(toast);
-  setTimeout(() => {
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'toast-close-btn';
+  closeBtn.setAttribute('aria-label', 'Dismiss notification');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => {
+    clearTimeout(timer);
     toast.remove();
-  }, duration);
+  });
+  actions.appendChild(closeBtn);
+  toast.appendChild(actions);
+
+  let remainingMs = duration;
+  let startedAt = Date.now();
+  let timer = setTimeout(() => toast.remove(), remainingMs);
+
+  const pauseTimer = () => {
+    clearTimeout(timer);
+    remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+  };
+
+  const resumeTimer = () => {
+    clearTimeout(timer);
+    startedAt = Date.now();
+    timer = setTimeout(() => toast.remove(), Math.max(1800, remainingMs));
+  };
+
+  toast.addEventListener('pointerenter', pauseTimer);
+  toast.addEventListener('focusin', pauseTimer);
+  toast.addEventListener('pointerleave', resumeTimer);
+  toast.addEventListener('focusout', resumeTimer);
+
+  container.appendChild(toast);
 }
 
 export function downloadTextFile(filename, content, mimeType) {

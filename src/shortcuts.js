@@ -2,7 +2,7 @@
 // markers). Pressing Space on one should pause rather than jump back again.
 const SPACE_TOGGLES_PLAYBACK_WITHIN = '[data-track-idx], [data-subchapter-time], [data-jump-bm], [data-seek-time]';
 
-export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggleShortcuts }) {
+export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggleShortcuts, onCycleLoop }) {
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) {
       return;
@@ -37,17 +37,29 @@ export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggl
 
     if (!player.book) return;
 
-    if (e.code === 'Space') {
+    if (e.code === 'Space' || e.key === 'k' || e.key === 'K') {
       e.preventDefault();
       player.togglePlay();
+    } else if (e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      player.seekBy(-(player.skipBackSeconds || 15));
+    } else if (e.key === 'l' || e.key === 'L') {
+      e.preventDefault();
+      player.seekBy(player.skipForwardSeconds || 30);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       if (e.shiftKey) player.prevTrack();
-      else player.seekBy(-15);
+      else player.seekBy(-(player.skipBackSeconds || 15));
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       if (e.shiftKey) player.nextTrack();
-      else player.seekBy(30);
+      else player.seekBy(player.skipForwardSeconds || 30);
+    } else if (e.shiftKey && e.key === 'ArrowUp') {
+      e.preventDefault();
+      player.setVolume(player.volume + 0.05);
+    } else if (e.shiftKey && e.key === 'ArrowDown') {
+      e.preventDefault();
+      player.setVolume(player.volume - 0.05);
     } else if (e.key === '[' || e.key === '{') {
       e.preventDefault();
       player.nudgeSpeed(e.shiftKey ? -0.1 : -0.01);
@@ -64,6 +76,9 @@ export function initShortcuts({ player, onQuickBookmark, onNoteBookmark, onToggl
     } else if (e.key === 'm' || e.key === 'M') {
       e.preventDefault();
       player.toggleMute();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      onCycleLoop?.();
     }
   });
 }

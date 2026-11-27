@@ -248,3 +248,19 @@ export function calcSpeedAdjustedTime(seconds, speed) {
   }
   return seconds / clampSpeed(speed);
 }
+
+/**
+ * Compute gentle auto-rewind seconds based on how long playback was paused.
+ */
+export function computeAutoRewindSeconds(pauseElapsedMs) {
+  if (!Number.isFinite(pauseElapsedMs) || pauseElapsedMs < 10_000) {
+    return 0;
+  }
+  if (pauseElapsedMs >= 600_000) {
+    return 5;
+  }
+  if (pauseElapsedMs >= 60_000) {
+    return 2;
+  }
+  return 1;
+}

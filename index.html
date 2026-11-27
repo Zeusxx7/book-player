@@ -37,6 +37,9 @@
         <button id="shortcutsBtn" class="icon-btn" type="button" title="Keyboard Shortcuts (?)" aria-label="Keyboard Shortcuts">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8"/></svg>
         </button>
+        <button id="settingsBtn" class="icon-btn" type="button" title="Preferences, Stats &amp; Backup" aria-label="Preferences and Backup">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        </button>
         <button id="themeToggleBtn" class="icon-btn" type="button" title="Toggle Theme" aria-label="Toggle Theme">
           <span id="themeIcon" class="icon-slot"></span>
         </button>
@@ -49,6 +52,8 @@
     <input id="appendFolderInput" type="file" webkitdirectory directory multiple class="sr-only" />
     <input id="appendFilesInput" type="file" multiple class="sr-only" />
     <input id="importBookmarksInput" type="file" accept=".json,application/json" class="sr-only" />
+    <input id="editBookCoverInput" type="file" accept="image/*" class="sr-only" />
+    <input id="importBackupInput" type="file" accept=".json,application/json" class="sr-only" />
 
     <!-- Main Content -->
     <main class="main-content">
@@ -99,7 +104,22 @@
             <svg class="search-icon ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input id="librarySearchInput" type="search" placeholder="Search textbooks or authors…" aria-label="Search textbooks" />
           </div>
-          <div id="storageInfo" class="storage-pill">Checking local storage…</div>
+          <div class="library-filters-row">
+            <select id="libraryFilterSelect" aria-label="Filter textbooks">
+              <option value="all">All Books</option>
+              <option value="in-progress">In Progress</option>
+              <option value="unstarted">Unstarted</option>
+              <option value="completed">Completed</option>
+            </select>
+            <select id="librarySortSelect" aria-label="Sort textbooks">
+              <option value="recent">Recently Played</option>
+              <option value="title">Title A–Z</option>
+              <option value="progress">Most Progress</option>
+              <option value="duration">Longest</option>
+            </select>
+            <button id="libraryStatsPill" class="storage-pill stats-pill hidden" type="button" title="View listening stats &amp; backup"></button>
+            <div id="storageInfo" class="storage-pill">Checking local storage…</div>
+          </div>
         </div>
 
         <div id="libraryEmpty" class="empty-state hidden">
@@ -121,7 +141,7 @@
                 <div class="player-book-meta">
                   <div class="player-meta-top">
                     <button id="backToLibraryBtn" class="link-btn" type="button">← Library</button>
-                    <span id="playerChapterBadge" class="chapter-badge">Chapter 1 / 1</span>
+                    <button id="playerChapterBadge" class="chapter-badge chapter-badge-btn" type="button" title="Jump to active chapter in list">Chapter 1 / 1</button>
                   </div>
                   <h2 id="playerBookTitle" class="player-book-title">Textbook Title</h2>
                   <p id="playerSectionName" class="player-section-name hidden"></p>
@@ -143,6 +163,7 @@
               <div class="scrubber-section">
                 <div class="scrubber-track-wrap">
                   <div id="scrubHoverTip" class="scrub-hover-tip hidden" aria-hidden="true"></div>
+                  <div id="scrubLoopRange" class="scrub-loop-range hidden" aria-hidden="true"></div>
                   <div id="scrubMarkers" class="scrub-markers" aria-hidden="false"></div>
                   <input
                     id="scrubRange"
@@ -157,6 +178,7 @@
                 </div>
                 <div class="timecode-row">
                   <span id="currentTimeLabel" class="mono">0:00</span>
+                  <span id="chapterEndCountdown" class="mono chapter-end-countdown hidden"></span>
                   <span id="remainingTimeLabel" class="mono remaining-label">−0:00</span>
                 </div>
               </div>
@@ -167,13 +189,13 @@
                   <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5v14"/><path d="M18 6l-8 6 8 6V6Z" fill="currentColor" stroke="none"/></svg>
                 </button>
                 <button id="skipBackBtn" class="transport-btn skip-btn" type="button" title="Back 15s (←)" aria-label="Skip back 15 seconds">
-                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">15</text></svg>
+                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text id="skipBackLabel" x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">15</text></svg>
                 </button>
                 <button id="playPauseBtn" class="play-btn" type="button" title="Play / Pause (Space)" aria-label="Play or Pause">
                   <span class="icon-slot"></span>
                 </button>
                 <button id="skipFwdBtn" class="transport-btn skip-btn" type="button" title="Forward 30s (→)" aria-label="Skip forward 30 seconds">
-                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">30</text></svg>
+                  <svg class="ui-icon ui-icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text id="skipFwdLabel" x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">30</text></svg>
                 </button>
                 <button id="nextTrackBtn" class="transport-btn" type="button" title="Next Chapter (Shift + →)" aria-label="Next Chapter">
                   <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 5v14"/><path d="M6 6l8 6-8 6V6Z" fill="currentColor" stroke="none"/></svg>
@@ -228,6 +250,14 @@
                 <button class="speed-step-btn" data-speed-delta="0.05" type="button" title="Increase 0.05×" aria-label="Increase speed by 0.05">+0.05</button>
               </div>
 
+              <!-- A-B Study Loop Strip -->
+              <div class="ab-loop-row" aria-label="A-B Study Loop">
+                <button id="loopABtn" class="btn btn-secondary btn-xs mono" type="button" title="Set loop start A (R)">A</button>
+                <button id="loopBBtn" class="btn btn-secondary btn-xs mono" type="button" title="Set loop end B (R)">B</button>
+                <span id="loopRangeLabel" class="loop-range-label mono">A–B Loop Off</span>
+                <button id="loopClearBtn" class="btn btn-secondary btn-xs hidden" type="button">Clear</button>
+              </div>
+
               <!-- Granular Fractional Playback Speed Console -->
               <div id="speedConsole" class="speed-console hidden">
                 <div class="speed-header">
@@ -235,11 +265,23 @@
                     <h3 class="speed-title">Precision Playback Speed</h3>
                     <span class="speed-subtitle">0.01× granular steps · 0.25× to 4.00×</span>
                   </div>
-                  <label class="pitch-toggle">
-                    <input id="pitchToggleInput" class="pitch-checkbox" type="checkbox" checked />
-                    <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-                    <span class="pitch-label">Keep Natural Pitch</span>
-                  </label>
+                  <div class="speed-toggles-group">
+                    <label class="pitch-toggle">
+                      <input id="pitchToggleInput" class="pitch-checkbox" type="checkbox" checked />
+                      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      <span class="pitch-label">Keep Natural Pitch</span>
+                    </label>
+                    <label class="pitch-toggle" title="Gently rewind 1–5s when resuming after a pause">
+                      <input id="autoRewindToggleInput" class="pitch-checkbox" type="checkbox" checked />
+                      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      <span class="pitch-label">Smart Rewind</span>
+                    </label>
+                    <label class="pitch-toggle" title="Enhance vocal clarity and level quiet lectures">
+                      <input id="voiceBoostToggleInput" class="pitch-checkbox" type="checkbox" />
+                      <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                      <span class="pitch-label">Voice Boost</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div class="speed-stepper-row">
@@ -326,6 +368,7 @@
                     <input id="chapterSearchInput" type="search" placeholder="Filter chapters…" aria-label="Filter chapters" />
                   </div>
                   <div class="panel-btn-group">
+                    <button id="manageChaptersBtn" class="btn btn-secondary btn-xs" type="button" aria-pressed="false">Manage</button>
                     <button id="appendFolderBtn" class="btn btn-secondary btn-xs" type="button">+ Folder</button>
                     <button id="appendFilesBtn" class="btn btn-secondary btn-xs" type="button">+ Files</button>
                   </div>
@@ -349,6 +392,7 @@
                 <div id="bookmarkFilterChips" class="filter-chips"></div>
 
                 <div class="bookmark-io-row">
+                  <button id="copyBookmarksMdBtn" class="btn btn-secondary btn-xs" type="button">Copy Notes</button>
                   <button id="exportBookmarksMdBtn" class="btn btn-secondary btn-xs" type="button">Export .md</button>
                   <button id="exportBookmarksJsonBtn" class="btn btn-secondary btn-xs" type="button">Export .json</button>
                   <button id="importBookmarksJsonBtn" class="btn btn-secondary btn-xs" type="button">Import .json</button>
@@ -364,6 +408,9 @@
 
     <!-- Sticky Mini Player (visible in Library view when a book is loaded) -->
     <div id="miniPlayer" class="mini-player hidden">
+      <div class="mini-progress-track" aria-hidden="true">
+        <div id="miniProgressFill" class="mini-progress-fill" style="width: 0%"></div>
+      </div>
       <button class="mini-player-info" id="miniPlayerOpenBtn" type="button" aria-label="Return to Now Playing">
         <div id="miniCover" class="mini-cover"></div>
         <div class="mini-text">
@@ -372,7 +419,10 @@
         </div>
       </button>
       <div class="mini-player-controls">
-        <span id="miniSpeedBadge" class="chip mono">1.00×</span>
+        <button id="miniSpeedBadge" class="chip chip-btn mono" type="button" title="Adjust playback speed">1.00×</button>
+        <button id="miniSkipBackBtn" class="icon-btn btn-xs" type="button" title="Back 15s" aria-label="Skip back 15 seconds">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text id="miniSkipBackLabel" x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="700" fill="currentColor" stroke="none" font-family="ui-monospace, monospace">15</text></svg>
+        </button>
         <button id="miniBookmarkBtn" class="icon-btn btn-xs" type="button" title="Quick Bookmark" aria-label="Quick Bookmark">
           <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5v16.5l-6-4-6 4V4.5Z"/></svg>
         </button>
@@ -478,6 +528,16 @@
       </div>
       <form id="bookEditForm" class="modal-form">
         <div class="form-group">
+          <label>Cover Artwork</label>
+          <div class="edit-cover-row">
+            <div id="editBookCoverPreview" class="edit-cover-preview"></div>
+            <div class="edit-cover-actions">
+              <button id="editBookCoverBtn" class="btn btn-secondary btn-xs" type="button">Upload Cover…</button>
+              <button id="clearBookCoverBtn" class="btn btn-secondary btn-xs hidden" type="button">Remove Cover</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
           <label for="editBookTitleInput">Textbook Title</label>
           <input id="editBookTitleInput" type="text" required />
         </div>
@@ -485,11 +545,31 @@
           <label for="editBookAuthorInput">Author / Instructor</label>
           <input id="editBookAuthorInput" type="text" />
         </div>
-        <div class="modal-actions">
-          <button id="cancelBookEditBtn" class="btn btn-secondary" type="button">Cancel</button>
-          <button class="btn btn-primary" type="submit">Save Changes</button>
+        <div class="modal-actions modal-actions-split">
+          <button id="resetBookProgressBtn" class="btn btn-danger btn-xs hidden" type="button">Reset Progress</button>
+          <div class="modal-actions-right">
+            <button id="cancelBookEditBtn" class="btn btn-secondary" type="button">Cancel</button>
+            <button class="btn btn-primary" type="submit">Save Changes</button>
+          </div>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- Confirmation Modal -->
+  <dialog id="confirmModal" class="modal-dialog" aria-labelledby="confirmModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Confirm Action</h3>
+        <button id="closeConfirmModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p id="confirmModalMessage" class="modal-subtitle"></p>
+      <div class="modal-actions">
+        <button id="confirmCancelBtn" class="btn btn-secondary" type="button">Cancel</button>
+        <button id="confirmOkBtn" class="btn btn-danger" type="button">Confirm</button>
+      </div>
     </div>
   </dialog>
 
@@ -505,6 +585,7 @@
       <div class="shortcuts-grid">
         <div class="shortcut-item"><kbd>Space</kbd><span>Play / Pause</span></div>
         <div class="shortcut-item"><kbd>←</kbd> / <kbd>→</kbd><span>Skip −15s / +30s</span></div>
+        <div class="shortcut-item"><kbd>J</kbd> / <kbd>K</kbd> / <kbd>L</kbd><span>Back 15s / Play / Forward 30s</span></div>
         <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd><span>Previous / Next Chapter</span></div>
         <div class="shortcut-item"><kbd>[</kbd> / <kbd>]</kbd><span>Speed −0.01× / +0.01×</span></div>
         <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>[</kbd> / <kbd>]</kbd><span>Speed −0.10× / +0.10×</span></div>
@@ -512,8 +593,101 @@
         <div class="shortcut-item"><kbd>B</kbd><span>Quick Bookmark</span></div>
         <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>B</kbd><span>Bookmark with Note</span></div>
         <div class="shortcut-item"><kbd>M</kbd><span>Mute / Unmute</span></div>
+        <div class="shortcut-item"><kbd>R</kbd><span>Cycle A–B Loop (A → B → Clear)</span></div>
+        <div class="shortcut-item"><kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd><span>Volume +5% / −5%</span></div>
         <div class="shortcut-item"><kbd>?</kbd><span>Toggle Shortcuts</span></div>
       </div>
+    </div>
+  </dialog>
+
+  <!-- Settings, Listening Stats & Backup Modal -->
+  <dialog id="settingsModal" class="modal-dialog" aria-labelledby="settingsModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="settingsModalTitle">Preferences, Stats &amp; Backup</h3>
+        <button id="closeSettingsModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-form">
+        <section class="settings-section">
+          <h4 class="settings-heading">Skip Intervals</h4>
+          <div class="settings-grid-2">
+            <div class="form-group">
+              <label for="skipBackSelect">Skip Backward</label>
+              <select id="skipBackSelect">
+                <option value="5">5 seconds</option>
+                <option value="10">10 seconds</option>
+                <option value="15" selected>15 seconds</option>
+                <option value="30">30 seconds</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="skipForwardSelect">Skip Forward</label>
+              <select id="skipForwardSelect">
+                <option value="10">10 seconds</option>
+                <option value="15">15 seconds</option>
+                <option value="30" selected>30 seconds</option>
+                <option value="45">45 seconds</option>
+                <option value="60">60 seconds</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-section-head">
+            <h4 class="settings-heading">Local Listening Stats</h4>
+            <button id="resetStatsBtn" class="link-btn" type="button">Reset Stats</button>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">Today</span>
+              <span id="statTodayVal" class="stat-value mono">0m</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Streak</span>
+              <span id="statStreakVal" class="stat-value mono">0 days</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">All-Time</span>
+              <span id="statTotalVal" class="stat-value mono">0m</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h4 class="settings-heading">Library Backup &amp; Restore</h4>
+          <p class="settings-help">Export or restore textbook progress, bookmarks, study notes, and preferences as JSON (excludes audio blobs).</p>
+          <div class="settings-backup-actions">
+            <button id="exportBackupBtn" class="btn btn-secondary btn-sm" type="button">Export Backup .json</button>
+            <button id="importBackupBtn" class="btn btn-accent btn-sm" type="button">Restore Backup .json</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Rename Chapter Modal -->
+  <dialog id="renameTrackModal" class="modal-dialog" aria-labelledby="renameTrackModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="renameTrackModalTitle">Rename Chapter</h3>
+        <button id="closeRenameTrackModalBtn" class="icon-btn btn-xs" type="button" aria-label="Close">
+          <svg class="ui-icon ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form id="renameTrackForm" class="modal-form">
+        <div class="form-group">
+          <label for="renameTrackInput">Chapter Title</label>
+          <input id="renameTrackInput" type="text" required />
+        </div>
+        <div class="modal-actions">
+          <button id="cancelRenameTrackBtn" class="btn btn-secondary" type="button">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save Title</button>
+        </div>
+      </form>
     </div>
   </dialog>
 

@@ -30,6 +30,7 @@ export function createPlayerView({
   onEditBookmark,
   onDeleteBookmark,
   onQuickBookmark,
+  onManageTrack,
 }) {
   let lastPlayerCoverKey = '';
   let lastMiniCoverKey = '';
@@ -97,6 +98,14 @@ export function createPlayerView({
   });
 
   els.chaptersList.addEventListener('click', (e) => {
+    const manageBtn = e.target.closest('[data-track-action]');
+    if (manageBtn) {
+      const idx = Number(manageBtn.dataset.trackIdx);
+      const action = manageBtn.dataset.trackAction;
+      onManageTrack?.(action, idx);
+      return;
+    }
+
     const subBtn = e.target.closest('[data-subchapter-time]');
     if (subBtn) {
       const trackIdx = Number(subBtn.dataset.trackIdx);
@@ -110,6 +119,22 @@ export function createPlayerView({
     const trackIdx = Number(row.dataset.trackIdx);
     player.loadTrack(trackIdx, 0, true);
   });
+
+  const wireListArrowNav = (listEl, selector) => {
+    listEl.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const items = Array.from(listEl.querySelectorAll(selector));
+      const idx = items.indexOf(document.activeElement);
+      if (idx === -1) return;
+      e.preventDefault();
+      const nextIdx = e.key === 'ArrowDown'
+        ? Math.min(items.length - 1, idx + 1)
+        : Math.max(0, idx - 1);
+      items[nextIdx]?.focus();
+    });
+  };
+  wireListArrowNav(els.chaptersList, '.chapter-row, .subchapter-row');
+  wireListArrowNav(els.bookmarksList, '.bookmark-jump-btn');
 
   els.bookmarkFilterChips.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-filter-category]');
@@ -201,18 +226,51 @@ export function createPlayerView({
     const s = player.getState();
     els.playPauseBtn.innerHTML = s.isPlaying ? ICONS.pause : ICONS.play;
     els.playPauseBtn.classList.toggle('is-playing', s.isPlaying);
-    els.muteBtn.innerHTML = s.muted || s.volume === 0 ? ICONS.volumeMute : ICONS.volume;
+    els.playPauseBtn.setAttribute('aria-label', s.isPlaying ? 'Pause' : 'Play');
+    els.playPauseBtn.title = s.isPlaying ? 'Pause (Space)' : 'Play (Space)';
+
+    const isMuted = s.muted || s.volume === 0;
+    els.muteBtn.innerHTML = isMuted ? ICONS.volumeMute : ICONS.volume;
+    els.muteBtn.setAttribute('aria-label', isMuted ? 'Unmute' : 'Mute');
+    els.muteBtn.title = isMuted ? 'Unmute (M)' : 'Mute (M)';
+
     els.volumeRange.value = String(s.volume);
     setRangeProgress(els.volumeRange, s.muted ? 0 : s.volume, 0, 1);
     els.pitchToggleInput.checked = s.preservesPitch;
+    if (els.autoRewindToggleInput) {
+      els.autoRewindToggleInput.checked = s.autoRewind !== false;
+    }
+    if (els.voiceBoostToggleInput) {
+      els.voiceBoostToggleInput.checked = Boolean(s.voiceBoost);
+    }
+
+    const backSec = s.skipBackSeconds || 15;
+    const fwdSec = s.skipForwardSeconds || 30;
+    if (els.skipBackLabel) els.skipBackLabel.textContent = String(backSec);
+    if (els.skipFwdLabel) els.skipFwdLabel.textContent = String(fwdSec);
+    if (els.miniSkipBackLabel) els.miniSkipBackLabel.textContent = String(backSec);
+    els.skipBackBtn.title = `Back ${backSec}s (←)`;
+    els.skipBackBtn.setAttribute('aria-label', `Skip back ${backSec} seconds`);
+    els.skipFwdBtn.title = `Forward ${fwdSec}s (→)`;
+    els.skipFwdBtn.setAttribute('aria-label', `Skip forward ${fwdSec} seconds`);
+    if (els.miniSkipBackBtn) {
+      els.miniSkipBackBtn.title = `Back ${backSec}s`;
+      els.miniSkipBackBtn.setAttribute('aria-label', `Skip back ${backSec} seconds`);
+    }
 
     for (const row of els.chaptersList.querySelectorAll('.chapter-row')) {
       const idx = Number(row.dataset.trackIdx);
       const isActive = idx === s.currentTrackIndex;
+      const isCompleted = idx < s.currentTrackIndex;
       row.classList.toggle('active', isActive);
+      row.classList.toggle('completed', isCompleted);
       const numEl = row.querySelector('.chapter-num');
       if (numEl) {
-        numEl.innerHTML = isActive && s.isPlaying ? EQ_BARS_MARKUP : String(idx + 1);
+        numEl.innerHTML = isActive && s.isPlaying
+          ? EQ_BARS_MARKUP
+          : isCompleted
+            ? ICONS.check
+            : String(idx + 1);
       }
     }
   }
@@ -270,6 +328,7 @@ export function createPlayerView({
       setRangeProgress(els.scrubRange, curVal, 0, maxVal);
     }
 
+    els.scrubRange.setAttribute('aria-valuetext', `${formatTime(cur)} of ${formatTime(dur)}`);
     els.currentTimeLabel.textContent = formatTime(cur);
     const rawRemaining = Math.max(0, dur - cur);
     // Show the real listening time left at the current speed; raw audio time goes in the tooltip
@@ -294,6 +353,37 @@ export function createPlayerView({
       els.bookRemainingText.textContent = `${formatDurationHuman(bookRemAdj)} left at ${formatSpeed(rate)}`;
     } else {
       els.bookRemainingText.textContent = `${formatDurationHuman(bp.remainingBookTime)} left`;
+    }
+
+    if (els.chapterEndCountdown) {
+      const ch = s.currentEmbeddedChapter;
+      if (ch && ch.endTime !== null && ch.endTime > cur) {
+        const chRem = calcSpeedAdjustedTime(Math.max(0, ch.endTime - cur), rate);
+        els.chapterEndCountdown.textContent = `Ch ends in ${formatDurationHuman(chRem)}`;
+        els.chapterEndCountdown.classList.remove('hidden');
+      } else {
+        els.chapterEndCountdown.classList.add('hidden');
+      }
+    }
+  }
+
+  function renderLoopControls() {
+    if (!els.loopABtn || !els.loopBBtn || !els.loopRangeLabel || !els.loopClearBtn) return;
+    const hasA = player.loopA !== null;
+    const hasB = player.loopB !== null;
+    els.loopABtn.classList.toggle('active', hasA);
+    els.loopBBtn.classList.toggle('active', hasB);
+    els.loopClearBtn.classList.toggle('hidden', !hasA && !hasB);
+
+    if (hasA && hasB) {
+      els.loopRangeLabel.textContent = `Loop ${formatTime(player.loopA)} → ${formatTime(player.loopB)}`;
+      els.loopRangeLabel.classList.add('is-active');
+    } else if (hasA) {
+      els.loopRangeLabel.textContent = `Loop A ${formatTime(player.loopA)} → …`;
+      els.loopRangeLabel.classList.add('is-active');
+    } else {
+      els.loopRangeLabel.textContent = 'A–B Loop Off';
+      els.loopRangeLabel.classList.remove('is-active');
     }
   }
 
@@ -342,6 +432,19 @@ export function createPlayerView({
     els.scrubMarkers.innerHTML = '';
     const track = player.getCurrentTrack();
     const dur = player.duration || track?.duration || 0;
+
+    if (els.scrubLoopRange) {
+      if (player.loopA !== null && player.loopB !== null && dur > 0) {
+        const leftPct = Math.max(0, Math.min(100, (player.loopA / dur) * 100));
+        const rightPct = Math.max(leftPct, Math.min(100, (player.loopB / dur) * 100));
+        els.scrubLoopRange.style.left = `${leftPct}%`;
+        els.scrubLoopRange.style.width = `${Math.max(1, rightPct - leftPct)}%`;
+        els.scrubLoopRange.classList.remove('hidden');
+      } else {
+        els.scrubLoopRange.classList.add('hidden');
+      }
+    }
+
     if (!track || dur <= 0) return;
 
     const chapters = player.getEmbeddedChapters(track);
@@ -388,6 +491,7 @@ export function createPlayerView({
 
     const activeEmbedded = player.getCurrentEmbeddedChapter();
     let lastSection = null;
+    let renderedCount = 0;
 
     tracks.forEach((track, idx) => {
       const chapters = player.getEmbeddedChapters(track);
@@ -397,6 +501,7 @@ export function createPlayerView({
         : chapters;
 
       if (query && !trackMatches && matchingChapters.length === 0) return;
+      renderedCount++;
 
       if (track.section && track.section !== lastSection) {
         lastSection = track.section;
@@ -407,13 +512,14 @@ export function createPlayerView({
       }
 
       const isActive = idx === player.currentTrackIndex;
+      const isCompleted = idx < player.currentTrackIndex;
       const bmCount = bmPerTrack.get(track.id) || 0;
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = `chapter-row ${isActive ? 'active' : ''}`;
+      row.className = `chapter-row${isActive ? ' active' : ''}${isCompleted ? ' completed' : ''}`;
       row.dataset.trackIdx = String(idx);
       row.innerHTML = `
-        <span class="chapter-num">${isActive && player.isPlaying ? EQ_BARS_MARKUP : idx + 1}</span>
+        <span class="chapter-num">${isActive && player.isPlaying ? EQ_BARS_MARKUP : isCompleted ? ICONS.check : idx + 1}</span>
         <div class="chapter-info">
           <div class="chapter-title" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</div>
           <div class="chapter-sub">
@@ -424,7 +530,25 @@ export function createPlayerView({
         </div>
         <span class="chapter-duration">${track.duration ? formatTime(track.duration) : '--:--'}</span>
       `;
-      els.chaptersList.appendChild(row);
+
+      if (state.managingChapters) {
+        const wrap = document.createElement('div');
+        wrap.className = 'chapter-item-wrap';
+        wrap.appendChild(row);
+
+        const controls = document.createElement('div');
+        controls.className = 'chapter-manage-actions';
+        controls.innerHTML = `
+          <button class="icon-btn btn-xs" type="button" data-track-action="up" data-track-idx="${idx}" title="Move Up" aria-label="Move chapter up" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button class="icon-btn btn-xs" type="button" data-track-action="down" data-track-idx="${idx}" title="Move Down" aria-label="Move chapter down" ${idx === tracks.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="icon-btn btn-xs" type="button" data-track-action="rename" data-track-idx="${idx}" title="Rename Chapter" aria-label="Rename chapter">${ICONS.edit}</button>
+          <button class="icon-btn btn-xs icon-btn-danger" type="button" data-track-action="delete" data-track-idx="${idx}" title="Delete Chapter" aria-label="Delete chapter">${ICONS.trash}</button>
+        `;
+        wrap.appendChild(controls);
+        els.chaptersList.appendChild(wrap);
+      } else {
+        els.chaptersList.appendChild(row);
+      }
 
       const subChaptersToShow = trackMatches ? chapters : matchingChapters;
       if (subChaptersToShow.length > 0) {
@@ -447,6 +571,15 @@ export function createPlayerView({
         els.chaptersList.appendChild(subList);
       }
     });
+
+    if (tracks.length > 0 && renderedCount === 0 && query) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.padding = '24px 14px';
+      empty.textContent = `No chapters matching "${state.chapterQuery.trim()}".`;
+      els.chaptersList.appendChild(empty);
+      return;
+    }
 
     els.chaptersList.scrollTop = previousScrollTop;
     scrollActiveChapterIntoView();
@@ -532,6 +665,15 @@ export function createPlayerView({
     els.miniTrackTitle.textContent = `${trackLabel} · ${formatTime(player.currentTime)}`;
     els.miniSpeedBadge.textContent = formatSpeed(player.playbackRate);
     els.miniPlayPauseBtn.innerHTML = player.isPlaying ? ICONS.pause : ICONS.play;
+    els.miniPlayPauseBtn.setAttribute('aria-label', player.isPlaying ? 'Pause' : 'Play');
+
+    if (els.miniProgressFill) {
+      const bp = player.getBookProgress();
+      const pct = bp.totalDuration > 0
+        ? (bp.percent || 0)
+        : (player.duration > 0 ? Math.min(100, ((player.currentTime || 0) / player.duration) * 100) : 0);
+      els.miniProgressFill.style.width = `${pct}%`;
+    }
   }
 
   function renderPlayerAll() {
@@ -540,6 +682,7 @@ export function createPlayerView({
     renderTransportState();
     renderTimeAndProgress(player.getState());
     renderSpeedControls(player.playbackRate);
+    renderLoopControls();
     renderScrubMarkers();
     renderChaptersList();
     renderBookmarksPanel();
@@ -555,6 +698,7 @@ export function createPlayerView({
     syncActiveChapterHighlight,
     renderTimeAndProgress,
     renderSpeedControls,
+    renderLoopControls,
     renderScrubMarkers,
     renderChaptersList,
     renderBookmarksPanel,

@@ -2,11 +2,13 @@ import {
   AUDIO_ACCEPT_STRING,
   clampSpeed,
   DEFAULT_SPEED,
+  formatDurationHuman,
   formatTime,
 } from './formats.js';
 import {
   deleteBook,
   deleteBookmark,
+  deleteTrack,
   getAllBookmarks,
   getAllBooks,
   getAllSettings,
@@ -17,7 +19,15 @@ import {
   requestPersistentStorage,
   setSetting,
   updateBook,
+  updateTrack,
+  updateTracksOrder,
 } from './db.js';
+import {
+  buildLibraryBackup,
+  getLocalDateKey,
+  parseLibraryBackup,
+  recordListeningSeconds,
+} from './backup.js';
 import {
   collectFilesFromDataTransfer,
   findDuplicateBook,
@@ -46,13 +56,17 @@ const state = {
   bookmarkCountsByBook: new Map(),
   activeBookBookmarks: [],
   libraryQuery: '',
+  libraryFilter: 'all',
+  librarySort: 'recent',
   chapterQuery: '',
   bookmarkQuery: '',
   bookmarkCategory: 'all',
   bookmarkSort: 'position',
   activeTab: 'chapters',
+  managingChapters: false,
   pinnedSpeeds: [1.15, 1.35, 1.65],
   theme: 'dark',
+  listeningStats: recordListeningSeconds(null, 0),
   deferredInstallPrompt: null,
   onPinnedSpeedsChange: (next) => {
     setSetting('pinnedSpeeds', next).catch(() => {});
@@ -69,6 +83,7 @@ const els = {
   navPlayerBtn: document.getElementById('navPlayerBtn'),
   installAppBtn: document.getElementById('installAppBtn'),
   shortcutsBtn: document.getElementById('shortcutsBtn'),
+  settingsBtn: document.getElementById('settingsBtn'),
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   themeIcon: document.getElementById('themeIcon'),
 
@@ -77,6 +92,8 @@ const els = {
   appendFolderInput: document.getElementById('appendFolderInput'),
   appendFilesInput: document.getElementById('appendFilesInput'),
   importBookmarksInput: document.getElementById('importBookmarksInput'),
+  editBookCoverInput: document.getElementById('editBookCoverInput'),
+  importBackupInput: document.getElementById('importBackupInput'),
 
   libraryView: document.getElementById('libraryView'),
   playerView: document.getElementById('playerView'),
@@ -84,6 +101,9 @@ const els = {
   uploadFolderBtn: document.getElementById('uploadFolderBtn'),
   uploadFilesBtn: document.getElementById('uploadFilesBtn'),
   librarySearchInput: document.getElementById('librarySearchInput'),
+  libraryFilterSelect: document.getElementById('libraryFilterSelect'),
+  librarySortSelect: document.getElementById('librarySortSelect'),
+  libraryStatsPill: document.getElementById('libraryStatsPill'),
   storageInfo: document.getElementById('storageInfo'),
   libraryEmpty: document.getElementById('libraryEmpty'),
   booksGrid: document.getElementById('booksGrid'),
@@ -99,15 +119,19 @@ const els = {
   bookRemainingText: document.getElementById('bookRemainingText'),
 
   scrubHoverTip: document.getElementById('scrubHoverTip'),
+  scrubLoopRange: document.getElementById('scrubLoopRange'),
   scrubMarkers: document.getElementById('scrubMarkers'),
   scrubRange: document.getElementById('scrubRange'),
   currentTimeLabel: document.getElementById('currentTimeLabel'),
+  chapterEndCountdown: document.getElementById('chapterEndCountdown'),
   remainingTimeLabel: document.getElementById('remainingTimeLabel'),
 
   prevTrackBtn: document.getElementById('prevTrackBtn'),
   skipBackBtn: document.getElementById('skipBackBtn'),
+  skipBackLabel: document.getElementById('skipBackLabel'),
   playPauseBtn: document.getElementById('playPauseBtn'),
   skipFwdBtn: document.getElementById('skipFwdBtn'),
+  skipFwdLabel: document.getElementById('skipFwdLabel'),
   nextTrackBtn: document.getElementById('nextTrackBtn'),
 
   quickBookmarkBtn: document.getElementById('quickBookmarkBtn'),
@@ -118,6 +142,12 @@ const els = {
   volumeRange: document.getElementById('volumeRange'),
 
   pitchToggleInput: document.getElementById('pitchToggleInput'),
+  autoRewindToggleInput: document.getElementById('autoRewindToggleInput'),
+  voiceBoostToggleInput: document.getElementById('voiceBoostToggleInput'),
+  loopABtn: document.getElementById('loopABtn'),
+  loopBBtn: document.getElementById('loopBBtn'),
+  loopRangeLabel: document.getElementById('loopRangeLabel'),
+  loopClearBtn: document.getElementById('loopClearBtn'),
   speedToggleBtn: document.getElementById('speedToggleBtn'),
   speedCompactReadout: document.getElementById('speedCompactReadout'),
   speedConsole: document.getElementById('speedConsole'),
@@ -136,6 +166,7 @@ const els = {
   chaptersPanel: document.getElementById('chaptersPanel'),
   bookmarksPanel: document.getElementById('bookmarksPanel'),
   chapterSearchInput: document.getElementById('chapterSearchInput'),
+  manageChaptersBtn: document.getElementById('manageChaptersBtn'),
   appendFolderBtn: document.getElementById('appendFolderBtn'),
   appendFilesBtn: document.getElementById('appendFilesBtn'),
   chaptersList: document.getElementById('chaptersList'),
@@ -143,17 +174,21 @@ const els = {
   bookmarkSearchInput: document.getElementById('bookmarkSearchInput'),
   bookmarkSortSelect: document.getElementById('bookmarkSortSelect'),
   bookmarkFilterChips: document.getElementById('bookmarkFilterChips'),
+  copyBookmarksMdBtn: document.getElementById('copyBookmarksMdBtn'),
   exportBookmarksMdBtn: document.getElementById('exportBookmarksMdBtn'),
   exportBookmarksJsonBtn: document.getElementById('exportBookmarksJsonBtn'),
   importBookmarksJsonBtn: document.getElementById('importBookmarksJsonBtn'),
   bookmarksList: document.getElementById('bookmarksList'),
 
   miniPlayer: document.getElementById('miniPlayer'),
+  miniProgressFill: document.getElementById('miniProgressFill'),
   miniPlayerOpenBtn: document.getElementById('miniPlayerOpenBtn'),
   miniCover: document.getElementById('miniCover'),
   miniBookTitle: document.getElementById('miniBookTitle'),
   miniTrackTitle: document.getElementById('miniTrackTitle'),
   miniSpeedBadge: document.getElementById('miniSpeedBadge'),
+  miniSkipBackBtn: document.getElementById('miniSkipBackBtn'),
+  miniSkipBackLabel: document.getElementById('miniSkipBackLabel'),
   miniBookmarkBtn: document.getElementById('miniBookmarkBtn'),
   miniPlayPauseBtn: document.getElementById('miniPlayPauseBtn'),
 
@@ -187,12 +222,41 @@ const els = {
   bookEditModal: document.getElementById('bookEditModal'),
   closeBookEditModalBtn: document.getElementById('closeBookEditModalBtn'),
   bookEditForm: document.getElementById('bookEditForm'),
+  editBookCoverPreview: document.getElementById('editBookCoverPreview'),
+  editBookCoverBtn: document.getElementById('editBookCoverBtn'),
+  clearBookCoverBtn: document.getElementById('clearBookCoverBtn'),
   editBookTitleInput: document.getElementById('editBookTitleInput'),
   editBookAuthorInput: document.getElementById('editBookAuthorInput'),
+  resetBookProgressBtn: document.getElementById('resetBookProgressBtn'),
   cancelBookEditBtn: document.getElementById('cancelBookEditBtn'),
+
+  confirmModal: document.getElementById('confirmModal'),
+  confirmModalTitle: document.getElementById('confirmModalTitle'),
+  closeConfirmModalBtn: document.getElementById('closeConfirmModalBtn'),
+  confirmModalMessage: document.getElementById('confirmModalMessage'),
+  confirmCancelBtn: document.getElementById('confirmCancelBtn'),
+  confirmOkBtn: document.getElementById('confirmOkBtn'),
 
   shortcutsModal: document.getElementById('shortcutsModal'),
   closeShortcutsBtn: document.getElementById('closeShortcutsBtn'),
+
+  settingsModal: document.getElementById('settingsModal'),
+  closeSettingsModalBtn: document.getElementById('closeSettingsModalBtn'),
+  skipBackSelect: document.getElementById('skipBackSelect'),
+  skipForwardSelect: document.getElementById('skipForwardSelect'),
+  resetStatsBtn: document.getElementById('resetStatsBtn'),
+  statTodayVal: document.getElementById('statTodayVal'),
+  statStreakVal: document.getElementById('statStreakVal'),
+  statTotalVal: document.getElementById('statTotalVal'),
+  exportBackupBtn: document.getElementById('exportBackupBtn'),
+  importBackupBtn: document.getElementById('importBackupBtn'),
+
+  renameTrackModal: document.getElementById('renameTrackModal'),
+  closeRenameTrackModalBtn: document.getElementById('closeRenameTrackModalBtn'),
+  renameTrackForm: document.getElementById('renameTrackForm'),
+  renameTrackInput: document.getElementById('renameTrackInput'),
+  cancelRenameTrackBtn: document.getElementById('cancelRenameTrackBtn'),
+
   toastContainer: document.getElementById('toastContainer'),
 };
 
@@ -248,6 +312,192 @@ function setSpeedConsoleOpen(open) {
   els.speedToggleBtn.classList.toggle('open', open);
 }
 
+function renderLibraryStatsPill() {
+  if (!els.libraryStatsPill) return;
+  const stats = recordListeningSeconds(state.listeningStats, 0);
+  state.listeningStats = stats;
+  if (stats.totalSeconds <= 0 && stats.streakDays <= 0) {
+    els.libraryStatsPill.classList.add('hidden');
+    return;
+  }
+  const todayLabel = formatDurationHuman(stats.todaySeconds);
+  const streakPart = stats.streakDays > 0 ? ` · ${stats.streakDays}d streak` : '';
+  els.libraryStatsPill.textContent = `Today: ${todayLabel}${streakPart}`;
+  els.libraryStatsPill.classList.remove('hidden');
+}
+
+async function handleManageTrack(action, idx) {
+  if (!player.book || !Array.isArray(player.tracks)) return;
+  const tracks = player.tracks;
+  const track = tracks[idx];
+  if (!track) return;
+
+  if (action === 'up' || action === 'down') {
+    const swapIdx = action === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= tracks.length) return;
+    [tracks[idx], tracks[swapIdx]] = [tracks[swapIdx], tracks[idx]];
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].order = i;
+    }
+    if (player.currentTrackIndex === idx) player.currentTrackIndex = swapIdx;
+    else if (player.currentTrackIndex === swapIdx) player.currentTrackIndex = idx;
+    await updateTracksOrder(tracks);
+    await player.persistProgress(true);
+    playerView.renderPlayerAll();
+    return;
+  }
+
+  if (action === 'rename') {
+    modals.openRenameTrackModal(track);
+    return;
+  }
+
+  if (action === 'delete') {
+    if (tracks.length <= 1) {
+      notify('A textbook must keep at least 1 chapter. Delete the textbook from the Library instead.', { isError: true });
+      return;
+    }
+    const confirmed = await modals.confirmAction({
+      title: 'Delete Chapter?',
+      message: `Remove "${track.title}" from "${player.book.title}"? This deletes its offline audio file.`,
+      confirmLabel: 'Delete Chapter',
+      isDanger: true,
+    });
+    if (!confirmed) return;
+
+    const wasPlaying = player.isPlaying;
+    const deletedActive = idx === player.currentTrackIndex;
+    await deleteTrack(track.id);
+    tracks.splice(idx, 1);
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].order = i;
+    }
+    await updateTracksOrder(tracks);
+
+    const totalDuration = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
+    const updatedBook = await updateBook(player.book.id, {
+      trackCount: tracks.length,
+      totalDuration,
+    });
+    if (updatedBook) {
+      player.book = updatedBook;
+    }
+
+    if (deletedActive) {
+      const nextIdx = Math.min(idx, tracks.length - 1);
+      await player.loadTrack(nextIdx, 0, wasPlaying);
+    } else if (idx < player.currentTrackIndex) {
+      player.currentTrackIndex -= 1;
+      await player.persistProgress(true);
+    }
+
+    playerView.renderPlayerAll();
+    await refreshLibrary();
+    notify(`Deleted chapter "${track.title}"`);
+  }
+}
+
+async function handleExportBackup() {
+  const [books, bookmarks, settings] = await Promise.all([
+    getAllBooks(),
+    getAllBookmarks(),
+    getAllSettings(),
+  ]);
+  const json = buildLibraryBackup({ books, bookmarks, settings });
+  const stamp = getLocalDateKey();
+  downloadTextFile(`lectio-backup-${stamp}.json`, json, 'application/json;charset=utf-8');
+  notify(`Exported backup (${books.length} books, ${bookmarks.length} bookmarks)`);
+}
+
+async function handleImportBackup(file) {
+  try {
+    const text = await file.text();
+    const { settings, books, bookmarks } = parseLibraryBackup(text);
+
+    for (const [key, val] of Object.entries(settings)) {
+      await setSetting(key, val);
+    }
+
+    if (settings.theme) applyTheme(settings.theme);
+    if (Array.isArray(settings.pinnedSpeeds) && settings.pinnedSpeeds.length > 0) {
+      state.pinnedSpeeds = settings.pinnedSpeeds;
+    }
+    if (typeof settings.preservesPitch === 'boolean') {
+      player.preservesPitch = settings.preservesPitch;
+    }
+    if (typeof settings.autoRewind === 'boolean') {
+      player.autoRewind = settings.autoRewind;
+    }
+    if (typeof settings.voiceBoost === 'boolean') {
+      player.setVoiceBoost(settings.voiceBoost);
+    }
+    if (settings.skipBackSeconds || settings.skipForwardSeconds) {
+      player.setSkipIntervals(settings.skipBackSeconds || 15, settings.skipForwardSeconds || 30);
+    }
+    if (settings.listeningStats) {
+      state.listeningStats = recordListeningSeconds(settings.listeningStats, 0);
+      renderLibraryStatsPill();
+    }
+
+    const existingBooks = await getAllBooks();
+    const byId = new Map(existingBooks.map((b) => [b.id, b]));
+    const byTitle = new Map(existingBooks.map((b) => [String(b.title || '').trim().toLowerCase(), b]));
+
+    let restoredBooks = 0;
+    const idMap = new Map();
+    for (const b of books) {
+      const match = byId.get(b.id) || byTitle.get(String(b.title || '').trim().toLowerCase());
+      if (match) {
+        idMap.set(b.id, match.id);
+        await updateBook(match.id, {
+          currentTrackIndex: Math.max(0, Math.min(b.currentTrackIndex || 0, Math.max(0, (match.trackCount || 1) - 1))),
+          currentTime: Math.max(0, Number(b.currentTime) || 0),
+          bookTime: Math.max(0, Number(b.bookTime) || 0),
+          playbackRate: clampSpeed(b.playbackRate || match.playbackRate || 1),
+          completed: Boolean(b.completed),
+        });
+        restoredBooks++;
+      }
+    }
+
+    const existingBookmarks = await getAllBookmarks();
+    const existingKeys = new Set(
+      existingBookmarks.map((bm) => `${bm.bookId}::${bm.trackOrder}::${Math.round(bm.time || 0)}::${bm.title}`)
+    );
+
+    let restoredBookmarks = 0;
+    for (const bm of bookmarks) {
+      const targetBookId = idMap.get(bm.bookId) || byTitle.get(String(bm.bookTitle || '').trim().toLowerCase())?.id;
+      if (!targetBookId) continue;
+      const dedupKey = `${targetBookId}::${bm.trackOrder ?? 0}::${Math.round(bm.time || 0)}::${bm.title}`;
+      if (existingKeys.has(dedupKey)) continue;
+      existingKeys.add(dedupKey);
+      await putBookmark({
+        ...bm,
+        id: bm.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        bookId: targetBookId,
+      });
+      restoredBookmarks++;
+    }
+
+    if (player.book) {
+      const refreshedBook = await getBook(player.book.id);
+      const tracks = await getTracksForBook(player.book.id);
+      state.activeBookBookmarks = await getBookmarksForBook(player.book.id);
+      if (refreshedBook && tracks.length > 0) {
+        await player.openBook(refreshedBook, tracks, { autoplay: false });
+        playerView.renderPlayerAll();
+      }
+    }
+
+    await refreshLibrary();
+    modals.updateSettingsStatsView(state.listeningStats);
+    notify(`Restored ${restoredBooks} book progress & ${restoredBookmarks} new bookmarks`);
+  } catch (err) {
+    notify(`Backup restore failed: ${err?.message || 'Invalid file'}`, { isError: true });
+  }
+}
+
 let modals;
 let libraryView;
 let playerView;
@@ -277,6 +527,7 @@ async function openBookInPlayer(bookId, autoplay = false) {
   state.chapterQuery = '';
   els.chapterSearchInput.value = '';
   els.navPlayerBtn.disabled = false;
+  setSetting('lastOpenBookId', book.id).catch(() => {});
 
   await player.openBook(book, tracks, { autoplay });
   switchView('player');
@@ -284,13 +535,17 @@ async function openBookInPlayer(bookId, autoplay = false) {
 }
 
 async function handleDeleteBook(book) {
-  const confirmed = window.confirm(
-    `Delete "${book.title}" and all ${book.trackCount || 0} audio chapters and bookmarks from offline storage?`
-  );
+  const confirmed = await modals.confirmAction({
+    title: 'Delete Textbook?',
+    message: `Delete "${book.title}" and all ${book.trackCount || 0} audio chapters and bookmarks from offline storage? This cannot be undone.`,
+    confirmLabel: 'Delete Textbook',
+    isDanger: true,
+  });
   if (!confirmed) return;
 
   if (player.book?.id === book.id) {
     await player.unloadBook({ persist: false });
+    setSetting('lastOpenBookId', null).catch(() => {});
     switchView('library');
   }
 
@@ -299,13 +554,43 @@ async function handleDeleteBook(book) {
   notify(`Deleted "${book.title}"`);
 }
 
+async function handleResetBookProgress(book) {
+  const confirmed = await modals.confirmAction({
+    title: 'Reset Listening Progress?',
+    message: `Reset playback position for "${book.title}" back to Chapter 1 (0:00)? Your bookmarks and notes will be kept.`,
+    confirmLabel: 'Reset Progress',
+    isDanger: true,
+  });
+  if (!confirmed) return;
+
+  const resetPatch = {
+    currentTrackIndex: 0,
+    currentTime: 0,
+    bookTime: 0,
+    completed: false,
+  };
+  const updated = await updateBook(book.id, resetPatch);
+  if (player.book?.id === book.id && updated) {
+    const tracks = player.tracks;
+    await player.openBook(updated, tracks, { autoplay: false, trackIndex: 0, startTime: 0 });
+    playerView.renderPlayerAll();
+  }
+  await refreshLibrary();
+  notify(`Reset progress for "${book.title}"`);
+}
+
+function getEffectiveBookmarkTrack(track) {
+  const embeddedCh = player.getCurrentEmbeddedChapter();
+  return embeddedCh ? { ...track, title: `${track.title} — ${embeddedCh.title}` } : track;
+}
+
 async function createQuickBookmark() {
   const track = player.getCurrentTrack();
   if (!player.book || !track) return;
 
   const bm = createBookmarkData({
     book: player.book,
-    track,
+    track: getEffectiveBookmarkTrack(track),
     time: player.currentTime,
     bookTime: player.getBookProgress().currentBookTime,
     speed: player.playbackRate,
@@ -332,7 +617,20 @@ async function handleDeleteBookmark(bm) {
   playerView.renderChaptersList();
   playerView.renderBookmarksPanel();
   refreshLibrary();
-  notify('Bookmark deleted');
+  notify('Bookmark deleted', {
+    actionLabel: 'Undo',
+    onAction: async () => {
+      await putBookmark(bm);
+      if (!state.activeBookBookmarks.some((item) => item.id === bm.id)) {
+        state.activeBookBookmarks.push(bm);
+      }
+      playerView.renderScrubMarkers();
+      playerView.renderChaptersList();
+      playerView.renderBookmarksPanel();
+      refreshLibrary();
+      notify('Bookmark restored');
+    },
+  });
 }
 
 async function runImport(entries, targetBookId = null, bookTitleOverride = '') {
@@ -435,6 +733,37 @@ function wireEvents() {
 
   els.shortcutsBtn.addEventListener('click', () => modals.toggleShortcutsModal());
 
+  const openSettings = () => modals.openSettingsModal({
+    stats: state.listeningStats,
+    skipBackSeconds: player.skipBackSeconds,
+    skipForwardSeconds: player.skipForwardSeconds,
+  });
+  els.settingsBtn.addEventListener('click', openSettings);
+  els.libraryStatsPill.addEventListener('click', openSettings);
+
+  els.skipBackSelect.addEventListener('change', (e) => {
+    player.setSkipIntervals(Number(e.target.value), player.skipForwardSeconds);
+  });
+  els.skipForwardSelect.addEventListener('change', (e) => {
+    player.setSkipIntervals(player.skipBackSeconds, Number(e.target.value));
+  });
+  els.resetStatsBtn.addEventListener('click', async () => {
+    state.listeningStats = recordListeningSeconds(null, 0);
+    await setSetting('listeningStats', state.listeningStats);
+    renderLibraryStatsPill();
+    modals.updateSettingsStatsView(state.listeningStats);
+    notify('Listening stats reset');
+  });
+  els.exportBackupBtn.addEventListener('click', () => handleExportBackup());
+  els.importBackupBtn.addEventListener('click', () => {
+    els.importBackupInput.value = '';
+    els.importBackupInput.click();
+  });
+  els.importBackupInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (file) await handleImportBackup(file);
+  });
+
   // Upload triggers
   els.uploadFolderBtn.addEventListener('click', () => triggerFolderPicker(null));
   els.uploadFilesBtn.addEventListener('click', () => {
@@ -498,21 +827,75 @@ function wireEvents() {
     await runImport(entries, appendTarget);
   });
 
-  // Library Search
+  // Library Search, Filter, Sort & DropZone Keyboard Activation
   els.librarySearchInput.addEventListener('input', (e) => {
     state.libraryQuery = e.target.value;
     libraryView.renderBooksGrid();
   });
+  els.libraryFilterSelect.addEventListener('change', (e) => {
+    state.libraryFilter = e.target.value;
+    libraryView.renderBooksGrid();
+  });
+  els.librarySortSelect.addEventListener('change', (e) => {
+    state.librarySort = e.target.value;
+    setSetting('librarySort', state.librarySort).catch(() => {});
+    libraryView.renderBooksGrid();
+  });
+  els.dropZone.addEventListener('keydown', (e) => {
+    if (e.target !== els.dropZone) return;
+    if (e.key === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerFolderPicker(null);
+    }
+  });
+
+  const wireEscapeClear = (inputEl, onClear) => {
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && inputEl.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        inputEl.value = '';
+        onClear();
+      }
+    });
+  };
+  wireEscapeClear(els.librarySearchInput, () => {
+    state.libraryQuery = '';
+    libraryView.renderBooksGrid();
+  });
+  wireEscapeClear(els.chapterSearchInput, () => {
+    state.chapterQuery = '';
+    playerView.renderChaptersList();
+  });
+  wireEscapeClear(els.bookmarkSearchInput, () => {
+    state.bookmarkQuery = '';
+    playerView.renderBookmarksPanel();
+  });
 
   // Transport & Mini-player navigation
   els.prevTrackBtn.addEventListener('click', () => player.prevTrack());
-  els.skipBackBtn.addEventListener('click', () => player.seekBy(-15));
+  els.skipBackBtn.addEventListener('click', () => player.seekBy(-(player.skipBackSeconds || 15)));
   els.playPauseBtn.addEventListener('click', () => player.togglePlay());
-  els.skipFwdBtn.addEventListener('click', () => player.seekBy(30));
+  els.skipFwdBtn.addEventListener('click', () => player.seekBy(player.skipForwardSeconds || 30));
   els.nextTrackBtn.addEventListener('click', () => player.nextTrack());
+
+  els.playerChapterBadge.addEventListener('click', () => {
+    switchPanelTab('chapters');
+    playerView.scrollActiveChapterIntoView({ force: true });
+    if (window.innerWidth <= 960) {
+      els.chaptersPanel.closest('.panel-column')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
 
   els.miniPlayerOpenBtn.addEventListener('click', () => switchView('player'));
   els.miniPlayPauseBtn.addEventListener('click', () => player.togglePlay());
+  els.miniSkipBackBtn.addEventListener('click', () => player.seekBy(-(player.skipBackSeconds || 15)));
+  els.miniSpeedBadge.addEventListener('click', () => {
+    setSpeedConsoleOpen(true);
+    setSetting('speedConsoleOpen', true).catch(() => {});
+    switchView('player');
+  });
 
   // Sleep & Volume
   els.sleepTimerSelect.addEventListener('change', (e) => {
@@ -541,6 +924,20 @@ function wireEvents() {
     setSetting('speedConsoleOpen', open).catch(() => {});
   });
   els.pitchToggleInput.addEventListener('change', (e) => player.setPreservesPitch(e.target.checked));
+  els.autoRewindToggleInput.addEventListener('change', (e) => player.setAutoRewind(e.target.checked));
+  els.voiceBoostToggleInput.addEventListener('change', (e) => player.setVoiceBoost(e.target.checked));
+
+  els.loopABtn.addEventListener('click', () => player.setLoopA());
+  els.loopBBtn.addEventListener('click', () => player.setLoopB());
+  els.loopClearBtn.addEventListener('click', () => player.clearLoop());
+
+  els.manageChaptersBtn.addEventListener('click', () => {
+    state.managingChapters = !state.managingChapters;
+    els.manageChaptersBtn.classList.toggle('active', state.managingChapters);
+    els.manageChaptersBtn.setAttribute('aria-pressed', String(state.managingChapters));
+    els.manageChaptersBtn.textContent = state.managingChapters ? 'Done' : 'Manage';
+    playerView.renderChaptersList();
+  });
 
   els.speedReadoutBtn.addEventListener('click', () => {
     els.speedReadoutBtn.classList.add('hidden');
@@ -615,6 +1012,21 @@ function wireEvents() {
   els.quickBookmarkBtn.addEventListener('click', () => createQuickBookmark());
   els.noteBookmarkBtn.addEventListener('click', () => modals.openBookmarkModal(null));
 
+  els.copyBookmarksMdBtn.addEventListener('click', async () => {
+    if (!player.book) return;
+    if (state.activeBookBookmarks.length === 0) {
+      notify('No bookmarks to copy yet');
+      return;
+    }
+    const md = exportBookmarksToMarkdown(player.book, state.activeBookBookmarks);
+    try {
+      await navigator.clipboard.writeText(md);
+      notify('Copied study notes as Markdown');
+    } catch {
+      notify('Clipboard unavailable — use Export .md instead', { isError: true });
+    }
+  });
+
   els.exportBookmarksMdBtn.addEventListener('click', () => {
     if (!player.book) return;
     const md = exportBookmarksToMarkdown(player.book, state.activeBookBookmarks);
@@ -667,7 +1079,10 @@ function wireEvents() {
       playerView.renderChaptersList();
       playerView.renderBookHeader();
       playerView.updateMiniPlayer();
-    } else if (reason === 'playstate' || reason === 'volume' || reason === 'pitch' || reason === 'sleep') {
+    } else if (reason === 'loop') {
+      playerView.renderLoopControls();
+      playerView.renderScrubMarkers();
+    } else if (reason === 'playstate' || reason === 'volume' || reason === 'pitch' || reason === 'autorewind' || reason === 'voiceboost' || reason === 'settings' || reason === 'sleep') {
       playerView.renderTransportState();
       playerView.updateMiniPlayer();
       libraryView.updateActiveBookStatus();
@@ -778,7 +1193,7 @@ async function init() {
       } else {
         const created = createBookmarkData({
           book: player.book,
-          track,
+          track: getEffectiveBookmarkTrack(track),
           time,
           bookTime: player.getBookProgress().currentBookTime,
           speed: player.playbackRate,
@@ -796,14 +1211,22 @@ async function init() {
       playerView.renderBookmarksPanel();
       refreshLibrary();
     },
-    onSaveBookEdit: async (bookId, { title, author }) => {
-      const updated = await updateBook(bookId, { title, author });
+    onSaveBookEdit: async (bookId, patch) => {
+      const updated = await updateBook(bookId, patch);
       if (player.book?.id === bookId && updated) {
         player.book = updated;
         playerView.renderPlayerAll();
       }
       await refreshLibrary();
       notify('Textbook details updated');
+    },
+    onResetBookProgress: handleResetBookProgress,
+    onRenameTrack: async (track, title) => {
+      await updateTrack(track.id, { title });
+      const target = player.tracks.find((t) => t.id === track.id);
+      if (target) target.title = title;
+      playerView.renderPlayerAll();
+      notify('Chapter renamed');
     },
   });
 
@@ -823,6 +1246,7 @@ async function init() {
     onEditBookmark: (bm) => modals.openBookmarkModal(bm),
     onDeleteBookmark: handleDeleteBookmark,
     onQuickBookmark: createQuickBookmark,
+    onManageTrack: handleManageTrack,
   });
 
   initShortcuts({
@@ -830,9 +1254,25 @@ async function init() {
     onQuickBookmark: createQuickBookmark,
     onNoteBookmark: () => modals.openBookmarkModal(null),
     onToggleShortcuts: () => modals.toggleShortcutsModal(),
+    onCycleLoop: () => {
+      const action = player.cycleLoop();
+      if (action === 'set-a') notify(`Loop start A set at ${formatTime(player.loopA)}`);
+      else if (action === 'set-b') notify(`Looping ${formatTime(player.loopA)} → ${formatTime(player.loopB)}`);
+      else notify('A–B loop cleared');
+    },
   });
 
   wireEvents();
+
+  setInterval(() => {
+    if (!player.isPlaying) return;
+    state.listeningStats = recordListeningSeconds(state.listeningStats, 5);
+    setSetting('listeningStats', state.listeningStats).catch(() => {});
+    renderLibraryStatsPill();
+    if (els.settingsModal.open) {
+      modals.updateSettingsStatsView(state.listeningStats);
+    }
+  }, 5000);
 
   els.retryInitBtn.addEventListener('click', () => {
     window.location.reload();
@@ -847,11 +1287,49 @@ async function init() {
     if (typeof settings.preservesPitch === 'boolean') {
       player.preservesPitch = settings.preservesPitch;
     }
+    if (typeof settings.autoRewind === 'boolean') {
+      player.autoRewind = settings.autoRewind;
+    }
+    if (typeof settings.voiceBoost === 'boolean') {
+      player.voiceBoost = settings.voiceBoost;
+    }
+    if (settings.skipBackSeconds || settings.skipForwardSeconds) {
+      player.setSkipIntervals(settings.skipBackSeconds || 15, settings.skipForwardSeconds || 30);
+    }
+    if (settings.listeningStats) {
+      state.listeningStats = recordListeningSeconds(settings.listeningStats, 0);
+    }
+    renderLibraryStatsPill();
+    if (typeof settings.librarySort === 'string') {
+      state.librarySort = settings.librarySort;
+      els.librarySortSelect.value = settings.librarySort;
+    }
     setSpeedConsoleOpen(settings.speedConsoleOpen === true);
     if (typeof settings.lastPlaybackRate === 'number') {
       player.playbackRate = clampSpeed(settings.lastPlaybackRate);
     }
     await refreshLibrary();
+
+    // Restore last open book into the Mini-Player without auto-playing
+    if (state.books.length > 0) {
+      const resumeBook =
+        (settings.lastOpenBookId && state.books.find((b) => b.id === settings.lastOpenBookId)) ||
+        state.books.find((b) => (b.bookTime || 0) > 5 || (b.currentTrackIndex || 0) > 0 || (b.currentTime || 0) > 5);
+      if (resumeBook) {
+        const [tracks, bookmarks] = await Promise.all([
+          getTracksForBook(resumeBook.id),
+          getBookmarksForBook(resumeBook.id),
+        ]);
+        if (tracks.length > 0) {
+          state.activeBookBookmarks = bookmarks;
+          els.navPlayerBtn.disabled = false;
+          await player.openBook(resumeBook, tracks, { autoplay: false });
+          playerView.renderPlayerAll();
+          libraryView.updateActiveBookStatus();
+        }
+      }
+    }
+
     els.fatalErrorBanner.classList.add('hidden');
   } catch (err) {
     els.fatalErrorText.textContent = `Offline library unavailable: ${err?.message || 'IndexedDB could not be opened.'}`;

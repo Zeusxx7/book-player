@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lectio-v5';
+const CACHE_NAME = 'lectio-v8';
 
 const PRECACHE_ASSETS = [
   './',
@@ -17,6 +17,7 @@ const PRECACHE_ASSETS = [
   './src/importer.js',
   './src/player.js',
   './src/bookmarks.js',
+  './src/backup.js',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',

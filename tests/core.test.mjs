@@ -5,6 +5,7 @@ import {
   calcSpeedAdjustedTime,
   clampSpeed,
   cleanTrackTitle,
+  computeAutoRewindSeconds,
   extractFolderAndSection,
   formatDurationHuman,
   formatSpeed,
@@ -16,6 +17,9 @@ import {
   sortTextbookTracks,
   stepSpeed,
 } from '../src/formats.js';
+
+import { getBookStatus, filterAndSortBooks } from '../src/views/library.js';
+import { buildLibraryBackup, parseLibraryBackup, recordListeningSeconds } from '../src/backup.js';
 
 import { parseID3v2, parseMP4Metadata } from '../src/metadata.js';
 
@@ -304,4 +308,118 @@ test('bookmarks creation, sorting, filtering, Markdown export, and JSON round-tr
   assert.equal(reimported[0].trackId, 't1');
   assert.equal(reimported[1].trackId, 't2');
   assert.equal(reimported[1].note, 'Orthogonal basis definition');
+});
+
+test('computeAutoRewindSeconds scales rewind gently with pause duration', () => {
+  assert.equal(computeAutoRewindSeconds(0), 0);
+  assert.equal(computeAutoRewindSeconds(9_500), 0);
+  assert.equal(computeAutoRewindSeconds(10_000), 1);
+  assert.equal(computeAutoRewindSeconds(45_000), 1);
+  assert.equal(computeAutoRewindSeconds(60_000), 2);
+  assert.equal(computeAutoRewindSeconds(599_000), 2);
+  assert.equal(computeAutoRewindSeconds(600_000), 5);
+  assert.equal(computeAutoRewindSeconds(Number.NaN), 0);
+});
+
+test('getBookStatus and filterAndSortBooks classify, filter, and sort textbooks', () => {
+  const unstarted = {
+    id: 'b1',
+    title: 'Zebra Anatomy',
+    author: 'Dr. Z',
+    totalDuration: 1000,
+    bookTime: 0,
+    currentTrackIndex: 0,
+    currentTime: 0,
+    lastPlayedAt: 100,
+  };
+  const inProgress = {
+    id: 'b2',
+    title: 'Algorithms',
+    author: 'Cormen',
+    totalDuration: 2000,
+    bookTime: 500,
+    currentTrackIndex: 1,
+    currentTime: 120,
+    lastPlayedAt: 300,
+  };
+  const completed = {
+    id: 'b3',
+    title: 'Calculus',
+    author: 'Stewart',
+    totalDuration: 1500,
+    bookTime: 1500,
+    completed: true,
+    lastPlayedAt: 200,
+  };
+
+  assert.equal(getBookStatus(unstarted), 'unstarted');
+  assert.equal(getBookStatus(inProgress), 'in-progress');
+  assert.equal(getBookStatus(completed), 'completed');
+
+  const all = [unstarted, inProgress, completed];
+  assert.deepEqual(
+    filterAndSortBooks(all, { filter: 'in-progress' }).map((b) => b.id),
+    ['b2']
+  );
+  assert.deepEqual(
+    filterAndSortBooks(all, { filter: 'completed' }).map((b) => b.id),
+    ['b3']
+  );
+  assert.deepEqual(
+    filterAndSortBooks(all, { query: 'cormen' }).map((b) => b.id),
+    ['b2']
+  );
+  assert.deepEqual(
+    filterAndSortBooks(all, { sort: 'title' }).map((b) => b.id),
+    ['b2', 'b3', 'b1']
+  );
+  assert.deepEqual(
+    filterAndSortBooks(all, { sort: 'progress' }).map((b) => b.id),
+    ['b3', 'b2', 'b1']
+  );
+  assert.deepEqual(
+    filterAndSortBooks(all, { sort: 'duration' }).map((b) => b.id),
+    ['b2', 'b3', 'b1']
+  );
+});
+
+test('recordListeningSeconds tracks daily totals and multi-day streaks accurately', () => {
+  let stats = recordListeningSeconds(null, 120, '2026-11-25');
+  assert.equal(stats.totalSeconds, 120);
+  assert.equal(stats.todaySeconds, 120);
+  assert.equal(stats.streakDays, 1);
+
+  stats = recordListeningSeconds(stats, 60, '2026-11-25');
+  assert.equal(stats.totalSeconds, 180);
+  assert.equal(stats.todaySeconds, 180);
+  assert.equal(stats.streakDays, 1);
+
+  // Next consecutive day increments streak and resets todaySeconds
+  stats = recordListeningSeconds(stats, 45, '2026-11-26');
+  assert.equal(stats.totalSeconds, 225);
+  assert.equal(stats.todaySeconds, 45);
+  assert.equal(stats.streakDays, 2);
+
+  // Gap of >1 day resets streak on check (delta=0)
+  const lapsed = recordListeningSeconds(stats, 0, '2026-11-28');
+  assert.equal(lapsed.streakDays, 0);
+  assert.equal(lapsed.todaySeconds, 0);
+  assert.equal(lapsed.totalSeconds, 225);
+});
+
+test('buildLibraryBackup and parseLibraryBackup round-trip and validate schema', () => {
+  const json = buildLibraryBackup({
+    books: [{ id: 'b1', title: 'Physics', currentTrackIndex: 2, currentTime: 45, playbackRate: 1.4 }],
+    bookmarks: [{ id: 'bm1', bookId: 'b1', trackOrder: 2, time: 30, title: 'Key law', category: 'exam' }],
+    settings: { theme: 'light', skipBackSeconds: 10 },
+  });
+
+  const restored = parseLibraryBackup(json);
+  assert.equal(restored.books.length, 1);
+  assert.equal(restored.bookmarks.length, 1);
+  assert.equal(restored.bookmarks[0].bookTitle, 'Physics');
+  assert.equal(restored.settings.skipBackSeconds, 10);
+
+  assert.throws(() => parseLibraryBackup('not json'), /not valid JSON/);
+  assert.throws(() => parseLibraryBackup(JSON.stringify({ schemaVersion: 99 })), /Unsupported/);
 });

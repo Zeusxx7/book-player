@@ -207,6 +207,17 @@ export async function updateTrack(id, patch) {
   return updated;
 }
 
+export async function updateTracksOrder(tracks) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return;
+  const db = await openDB();
+  const tx = db.transaction('tracks', 'readwrite');
+  const store = tx.objectStore('tracks');
+  for (let i = 0; i < tracks.length; i++) {
+    store.put({ ...tracks[i], order: i });
+  }
+  await txDone(tx);
+}
+
 export async function deleteTrack(id) {
   const db = await openDB();
   const tx = db.transaction(['tracks', 'audioBlobs'], 'readwrite');

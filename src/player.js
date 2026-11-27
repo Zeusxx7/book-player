@@ -1,4 +1,4 @@
-import { clampSpeed, DEFAULT_SPEED, normalizeAudioMime, stepSpeed } from './formats.js';
+import { clampSpeed, computeAutoRewindSeconds, DEFAULT_SPEED, normalizeAudioMime, stepSpeed } from './formats.js';
 import { getAudioBlob, setSetting, updateBook, updateTrack } from './db.js';
 
 // Volume fades to silence over this window before the sleep timer pauses playback
@@ -18,6 +18,12 @@ export class LectioPlayer extends EventTarget {
     this.isPlaying = false;
     this.playbackRate = DEFAULT_SPEED;
     this.preservesPitch = true;
+    this.autoRewind = true;
+    this.skipBackSeconds = 15;
+    this.skipForwardSeconds = 30;
+    this.loopA = null;
+    this.loopB = null;
+    this.voiceBoost = false;
     this.volume = 1;
     this.muted = false;
 
@@ -28,10 +34,14 @@ export class LectioPlayer extends EventTarget {
 
     this._objectUrl = null;
     this._pendingSeekTime = null;
+    this._pausedAt = null;
     this._lastPersistAt = 0;
     this._loadToken = 0;
     this._lastEmbeddedChapterIndex = -1;
     this._chapterCache = new WeakMap();
+    this._audioCtx = null;
+    this._audioSource = null;
+    this._voiceNodes = null;
 
     this._bindAudioEvents();
     this._bindMediaSession();
@@ -161,6 +171,9 @@ export class LectioPlayer extends EventTarget {
 
     this.audio.addEventListener('pause', () => {
       this.isPlaying = false;
+      if (!this.audio.ended && this._pausedAt === null) {
+        this._pausedAt = Date.now();
+      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
       }
@@ -173,6 +186,21 @@ export class LectioPlayer extends EventTarget {
       this.currentTime = this.audio.currentTime || 0;
       if (Number.isFinite(this.audio.duration) && this.audio.duration > 0) {
         this.duration = this.audio.duration;
+      }
+
+      // Check A-B loop boundary
+      if (this.loopA !== null && this.loopB !== null && this.currentTime >= this.loopB) {
+        this.audio.currentTime = this.loopA;
+        this.currentTime = this.loopA;
+        this._syncEmbeddedChapterOnTime(this.currentTime);
+        this._updateMediaPositionState();
+        this._emit('timeupdate', {
+          currentTime: this.currentTime,
+          duration: this.duration,
+          bookPosition: this.getBookProgress(),
+          currentEmbeddedChapter: this.getCurrentEmbeddedChapter(),
+        });
+        return;
       }
 
       // Check embedded .m4b chapter boundary for "End of Chapter" sleep timer
@@ -210,6 +238,7 @@ export class LectioPlayer extends EventTarget {
 
     this.audio.addEventListener('ended', async () => {
       this.isPlaying = false;
+      this._pausedAt = null;
 
       if (this.sleepMode === 'end-of-chapter') {
         this.clearSleepTimer(false);
@@ -223,6 +252,10 @@ export class LectioPlayer extends EventTarget {
         await this.loadTrack(this.currentTrackIndex + 1, 0, true);
       } else {
         this.currentTime = this.duration;
+        if (this.book) {
+          this.book.completed = true;
+          updateBook(this.book.id, { completed: true }).catch(() => {});
+        }
         await this.persistProgress(true);
         this._emitStateChange('playstate');
       }
@@ -252,8 +285,8 @@ export class LectioPlayer extends EventTarget {
 
     safeHandler('play', () => this.play());
     safeHandler('pause', () => this.pause());
-    safeHandler('seekbackward', (details) => this.seekBy(-(details?.seekOffset || 15)));
-    safeHandler('seekforward', (details) => this.seekBy(details?.seekOffset || 30));
+    safeHandler('seekbackward', (details) => this.seekBy(-(details?.seekOffset || this.skipBackSeconds)));
+    safeHandler('seekforward', (details) => this.seekBy(details?.seekOffset || this.skipForwardSeconds));
     safeHandler('previoustrack', () => this.prevTrack());
     safeHandler('nexttrack', () => this.nextTrack());
     safeHandler('seekto', (details) => {
@@ -373,6 +406,12 @@ export class LectioPlayer extends EventTarget {
       isPlaying: this.isPlaying,
       playbackRate: this.playbackRate,
       preservesPitch: this.preservesPitch,
+      autoRewind: this.autoRewind,
+      skipBackSeconds: this.skipBackSeconds,
+      skipForwardSeconds: this.skipForwardSeconds,
+      loopA: this.loopA,
+      loopB: this.loopB,
+      voiceBoost: this.voiceBoost,
       volume: this.volume,
       muted: this.muted,
       sleepMode: this.sleepMode,
@@ -387,6 +426,7 @@ export class LectioPlayer extends EventTarget {
       trackIndex = book?.currentTrackIndex || 0,
       startTime = book?.currentTime || 0,
       preservesPitch,
+      autoRewind,
     } = options;
 
     // Persist progress of the previously open book before switching
@@ -396,12 +436,20 @@ export class LectioPlayer extends EventTarget {
 
     this.pause();
     this.clearSleepTimer(false);
+    this._pausedAt = null;
+    this.loopA = null;
+    this.loopB = null;
+    this.loopA = null;
+    this.loopB = null;
     this.book = book;
     this.tracks = tracks || [];
     this._lastEmbeddedChapterIndex = -1;
 
     if (typeof preservesPitch === 'boolean') {
       this.preservesPitch = preservesPitch;
+    }
+    if (typeof autoRewind === 'boolean') {
+      this.autoRewind = autoRewind;
     }
     this.playbackRate = clampSpeed(book?.playbackRate ?? this.playbackRate);
 
@@ -427,6 +475,9 @@ export class LectioPlayer extends EventTarget {
 
     this.audio.pause();
     this.isPlaying = false;
+    this._pausedAt = null;
+    this.loopA = null;
+    this.loopB = null;
     this.currentTrackIndex = index;
     this.currentTime = startTime || 0;
     this.duration = track.duration || 0;
@@ -467,7 +518,22 @@ export class LectioPlayer extends EventTarget {
 
   async play() {
     if (!this.audio.src) return;
+    if (this.autoRewind && this._pausedAt !== null && this.currentTime > 0) {
+      const rewindSec = computeAutoRewindSeconds(Date.now() - this._pausedAt);
+      this._pausedAt = null;
+      if (rewindSec > 0) {
+        const floor = this.getCurrentEmbeddedChapter(this.currentTime)?.startTime ?? 0;
+        const rewound = Math.max(floor, this.currentTime - rewindSec);
+        this.audio.currentTime = rewound;
+        this.currentTime = rewound;
+      }
+    } else {
+      this._pausedAt = null;
+    }
     this._applyPlaybackRateToAudio();
+    if (this._audioCtx && this._audioCtx.state === 'suspended') {
+      this._audioCtx.resume().catch(() => {});
+    }
     try {
       await this.audio.play();
     } catch (err) {
@@ -478,6 +544,9 @@ export class LectioPlayer extends EventTarget {
   }
 
   pause() {
+    if (!this.audio.paused || this.isPlaying) {
+      this._pausedAt = Date.now();
+    }
     if (!this.audio.paused) {
       this.audio.pause();
     }
@@ -496,12 +565,17 @@ export class LectioPlayer extends EventTarget {
 
   seekTo(seconds, { persist = true } = {}) {
     if (!this.audio.src) return;
+    this._pausedAt = null;
     const maxDur = Number.isFinite(this.audio.duration) && this.audio.duration > 0
       ? this.audio.duration
       : this.duration;
     const target = maxDur > 0 ? Math.max(0, Math.min(seconds, maxDur)) : Math.max(0, seconds);
     this.audio.currentTime = target;
     this.currentTime = target;
+
+    if (this.book?.completed && maxDur > 0 && target < maxDur - 2) {
+      this.book.completed = false;
+    }
 
     const ch = this._syncEmbeddedChapterOnTime(target);
     if (this.sleepMode === 'end-of-chapter') {
@@ -520,8 +594,59 @@ export class LectioPlayer extends EventTarget {
     });
   }
 
-  seekBy(deltaSeconds) {
-    this.seekTo((this.currentTime || 0) + deltaSeconds, { persist: true });
+  async seekBy(deltaSeconds) {
+    const delta = Number(deltaSeconds);
+    if (!Number.isFinite(delta)) return;
+
+    if (!this.book || this.tracks.length === 0) {
+      this.seekTo((this.currentTime || 0) + delta, { persist: true });
+      return;
+    }
+
+    const maxDur = Number.isFinite(this.audio.duration) && this.audio.duration > 0
+      ? this.audio.duration
+      : (this.duration || this.getCurrentTrack()?.duration || 0);
+    const rawTarget = (this.currentTime || 0) + delta;
+
+    // Cross backward into the previous track(s)
+    if (rawTarget < 0 && this.currentTrackIndex > 0) {
+      let remainingBack = -rawTarget;
+      let idx = this.currentTrackIndex - 1;
+      while (idx > 0) {
+        const prevDur = this.tracks[idx]?.duration || 0;
+        if (prevDur > 0 && remainingBack > prevDur) {
+          remainingBack -= prevDur;
+          idx--;
+        } else {
+          break;
+        }
+      }
+      const targetDur = this.tracks[idx]?.duration || 0;
+      const landTime = targetDur > 0 ? Math.max(0, targetDur - remainingBack) : 0;
+      await this.loadTrack(idx, landTime, this.isPlaying);
+      return;
+    }
+
+    // Cross forward into the next track(s)
+    if (maxDur > 0 && rawTarget > maxDur && this.currentTrackIndex + 1 < this.tracks.length) {
+      let overflow = rawTarget - maxDur;
+      let idx = this.currentTrackIndex + 1;
+      while (idx + 1 < this.tracks.length) {
+        const nextDur = this.tracks[idx]?.duration || 0;
+        if (nextDur > 0 && overflow >= nextDur) {
+          overflow -= nextDur;
+          idx++;
+        } else {
+          break;
+        }
+      }
+      const targetDur = this.tracks[idx]?.duration || 0;
+      const landTime = targetDur > 0 ? Math.min(overflow, Math.max(0, targetDur - 0.25)) : overflow;
+      await this.loadTrack(idx, landTime, this.isPlaying);
+      return;
+    }
+
+    this.seekTo(rawTarget, { persist: true });
   }
 
   async jumpToPosition(trackIndex, timeSeconds, autoplay = true) {
@@ -608,6 +733,124 @@ export class LectioPlayer extends EventTarget {
     this._applyPlaybackRateToAudio();
     setSetting('preservesPitch', this.preservesPitch).catch(() => {});
     this._emitStateChange('pitch');
+  }
+
+  setAutoRewind(enabled) {
+    this.autoRewind = Boolean(enabled);
+    setSetting('autoRewind', this.autoRewind).catch(() => {});
+    this._emitStateChange('autorewind');
+  }
+
+  setSkipIntervals(backSeconds, forwardSeconds) {
+    const clampInterval = (v, fallback) => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) ? Math.max(5, Math.min(120, n)) : fallback;
+    };
+    this.skipBackSeconds = clampInterval(backSeconds, this.skipBackSeconds);
+    this.skipForwardSeconds = clampInterval(forwardSeconds, this.skipForwardSeconds);
+    setSetting('skipBackSeconds', this.skipBackSeconds).catch(() => {});
+    setSetting('skipForwardSeconds', this.skipForwardSeconds).catch(() => {});
+    this._emitStateChange('settings');
+  }
+
+  setLoopA(time = this.currentTime) {
+    const a = Math.max(0, Number(time) || 0);
+    this.loopA = a;
+    if (this.loopB !== null && this.loopB <= a + 0.5) {
+      this.loopB = null;
+    }
+    this._emitStateChange('loop');
+  }
+
+  setLoopB(time = this.currentTime) {
+    let b = Math.max(0, Number(time) || 0);
+    if (this.loopA === null) {
+      this.loopA = Math.max(0, b - 10);
+      this.loopB = Math.max(this.loopA + 0.5, b);
+    } else if (b < this.loopA) {
+      const prevA = this.loopA;
+      this.loopA = b;
+      this.loopB = Math.max(b + 0.5, prevA);
+    } else {
+      this.loopB = Math.max(this.loopA + 0.5, b);
+    }
+    this._emitStateChange('loop');
+  }
+
+  clearLoop() {
+    this.loopA = null;
+    this.loopB = null;
+    this._emitStateChange('loop');
+  }
+
+  cycleLoop() {
+    if (this.loopA === null) {
+      this.setLoopA();
+      return 'set-a';
+    }
+    if (this.loopB === null) {
+      this.setLoopB();
+      return 'set-b';
+    }
+    this.clearLoop();
+    return 'cleared';
+  }
+
+  _applyVoiceBoost() {
+    if (typeof window === 'undefined') return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    if (!this._audioCtx && !this.voiceBoost) return;
+
+    try {
+      if (!this._audioCtx) {
+        this._audioCtx = new AudioCtx();
+        this._audioSource = this._audioCtx.createMediaElementSource(this.audio);
+
+        const highpass = this._audioCtx.createBiquadFilter();
+        highpass.type = 'highpass';
+        highpass.frequency.value = 85;
+
+        const presence = this._audioCtx.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.value = 2800;
+        presence.Q.value = 1;
+        presence.gain.value = 4;
+
+        const compressor = this._audioCtx.createDynamicsCompressor();
+        compressor.threshold.value = -24;
+        compressor.knee.value = 12;
+        compressor.ratio.value = 3;
+        compressor.attack.value = 0.005;
+        compressor.release.value = 0.15;
+
+        highpass.connect(presence);
+        presence.connect(compressor);
+        compressor.connect(this._audioCtx.destination);
+        this._voiceNodes = { highpass, presence, compressor };
+      }
+
+      if (this._audioCtx.state === 'suspended') {
+        this._audioCtx.resume().catch(() => {});
+      }
+
+      this._audioSource.disconnect();
+      if (this.voiceBoost && this._voiceNodes) {
+        this._audioSource.connect(this._voiceNodes.highpass);
+      } else {
+        this._audioSource.connect(this._audioCtx.destination);
+      }
+    } catch {
+      // Fall back silently if browser restricts Web Audio routing
+    }
+  }
+
+  setVoiceBoost(enabled) {
+    this.voiceBoost = Boolean(enabled);
+    this._applyVoiceBoost();
+    setSetting('voiceBoost', this.voiceBoost).catch(() => {});
+    this._emitStateChange('voiceboost');
   }
 
   setVolume(vol) {
@@ -744,6 +987,7 @@ export class LectioPlayer extends EventTarget {
         bookTime: currentBookTime,
         playbackRate: this.playbackRate,
         lastPlayedAt: now,
+        completed: Boolean(this.book.completed),
       });
     } catch {
       // Ignore transient DB write failures
@@ -756,6 +1000,9 @@ export class LectioPlayer extends EventTarget {
     }
     this.pause();
     this.clearSleepTimer(false);
+    this._pausedAt = null;
+    this.loopA = null;
+    this.loopB = null;
     this._revokeObjectUrl();
     this.audio.removeAttribute('src');
     this.book = null;

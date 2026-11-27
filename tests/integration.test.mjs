@@ -272,3 +272,181 @@ test('sleep timer fades volume before stopping, can be extended, and restores vo
   assert.ok(Math.abs(player.audio.volume - 0.3) < 0.02, `volume was ${player.audio.volume}`);
   player.clearSleepTimer(false);
 });
+
+test('LectioPlayer supports cross-track seekBy and smart autoRewind on resume', async () => {
+  mocks.fakeIndexedDB._reset();
+  db.closeDB();
+
+  const book = {
+    id: 'book-nav',
+    title: 'Multi-Chapter Textbook',
+    trackCount: 2,
+    totalDuration: 300,
+    currentTrackIndex: 0,
+    currentTime: 0,
+    bookTime: 0,
+    playbackRate: 1.0,
+    createdAt: 1,
+    lastPlayedAt: 1,
+  };
+  const tracks = [
+    {
+      id: 'tn-1',
+      bookId: 'book-nav',
+      order: 0,
+      title: 'Part 1',
+      fileName: 'Part1.m4b',
+      mimeType: 'audio/mp4',
+      duration: 180,
+      chapters: [
+        { title: 'Sec 1', startTime: 0 },
+        { title: 'Sec 2', startTime: 50 },
+      ],
+    },
+    {
+      id: 'tn-2',
+      bookId: 'book-nav',
+      order: 1,
+      title: 'Part 2',
+      fileName: 'Part2.mp3',
+      mimeType: 'audio/mpeg',
+      duration: 120,
+    },
+  ];
+  await db.putBook(book);
+  await db.putTracksWithBlobs(tracks, [
+    { trackId: 'tn-1', bookId: 'book-nav', blob: new Blob(['1']) },
+    { trackId: 'tn-2', bookId: 'book-nav', blob: new Blob(['2']) },
+  ]);
+
+  const player = new LectioPlayer();
+  player.audio.duration = 180;
+  await player.openBook(book, tracks, { autoplay: false, autoRewind: true });
+  await tick(15);
+
+  // Seek forward past Track 1 end (175 + 30 = 205 -> 25s into Track 2)
+  player.seekTo(175, { persist: false });
+  await player.play();
+  await player.seekBy(30);
+  await tick(15);
+  assert.equal(player.currentTrackIndex, 1);
+  assert.equal(player.currentTime, 25);
+  assert.equal(player.isPlaying, true);
+
+  // Seek backward past Track 2 start (5 - 15 = -10 -> 170s in Track 1)
+  player.seekTo(5, { persist: false });
+  await player.seekBy(-15);
+  await tick(15);
+  assert.equal(player.currentTrackIndex, 0);
+  assert.equal(player.currentTime, 170);
+
+  // Smart auto-rewind after a simulated 2-minute pause rewinds 2s
+  player.pause();
+  await tick(10);
+  player._pausedAt = Date.now() - 120_000;
+  await player.play();
+  assert.equal(player.currentTime, 168);
+
+  // Respects embedded chapter start floor (50.5s - 2s -> clamped to 50s)
+  player.seekTo(50.5, { persist: false });
+  player.pause();
+  await tick(10);
+  player._pausedAt = Date.now() - 120_000;
+  await player.play();
+  assert.equal(player.currentTime, 50);
+
+  // Explicit seek while paused clears _pausedAt and does not rewind on play
+  player.pause();
+  await tick(10);
+  player._pausedAt = Date.now() - 120_000;
+  player.seekTo(80, { persist: false });
+  await player.play();
+  assert.equal(player.currentTime, 80);
+
+  // Disabling autoRewind skips rewind completely
+  player.setAutoRewind(false);
+  player.pause();
+  await tick(10);
+  player._pausedAt = Date.now() - 600_000;
+  await player.play();
+  assert.equal(player.currentTime, 80);
+
+  await player.unloadBook({ persist: false });
+});
+
+test('LectioPlayer supports A-B looping, configurable skip intervals, voice boost state, and db.updateTracksOrder', async () => {
+  mocks.fakeIndexedDB._reset();
+  db.closeDB();
+
+  const book = {
+    id: 'book-loop',
+    title: 'Loop & Order Book',
+    trackCount: 2,
+    totalDuration: 200,
+    currentTrackIndex: 0,
+    currentTime: 0,
+    bookTime: 0,
+    playbackRate: 1.0,
+    createdAt: 1,
+    lastPlayedAt: 1,
+  };
+  const tracks = [
+    { id: 'tl-1', bookId: 'book-loop', order: 0, title: 'Ch 1', fileName: '01.mp3', duration: 100 },
+    { id: 'tl-2', bookId: 'book-loop', order: 1, title: 'Ch 2', fileName: '02.mp3', duration: 100 },
+  ];
+  await db.putBook(book);
+  await db.putTracksWithBlobs(tracks, [
+    { trackId: 'tl-1', bookId: 'book-loop', blob: new Blob(['1']) },
+    { trackId: 'tl-2', bookId: 'book-loop', blob: new Blob(['2']) },
+  ]);
+
+  const player = new LectioPlayer();
+  player.audio.duration = 100;
+  await player.openBook(book, tracks, { autoplay: false });
+  await tick(15);
+
+  // Skip intervals clamp and persist
+  player.setSkipIntervals(10, 45);
+  assert.equal(player.skipBackSeconds, 10);
+  assert.equal(player.skipForwardSeconds, 45);
+  assert.equal(await db.getSetting('skipBackSeconds'), 10);
+
+  // Voice boost safely sets state even without AudioContext in Node
+  player.setVoiceBoost(true);
+  assert.equal(player.voiceBoost, true);
+  assert.equal(await db.getSetting('voiceBoost'), true);
+
+  // A-B loop cycles and wraps playback at boundary B -> A
+  player.seekTo(20, { persist: false });
+  assert.equal(player.cycleLoop(), 'set-a');
+  assert.equal(player.loopA, 20);
+  player.seekTo(35, { persist: false });
+  assert.equal(player.cycleLoop(), 'set-b');
+  assert.equal(player.loopB, 35);
+
+  player.audio._emitTimeUpdate(35.2);
+  assert.equal(player.currentTime, 20);
+  assert.equal(player.audio.currentTime, 20);
+
+  assert.equal(player.cycleLoop(), 'cleared');
+  assert.equal(player.loopA, null);
+  assert.equal(player.loopB, null);
+
+  // Switching track clears any active loop
+  player.setLoopA(10);
+  player.setLoopB(25);
+  await player.loadTrack(1, 0, false);
+  assert.equal(player.loopA, null);
+  assert.equal(player.loopB, null);
+
+  // db.updateTracksOrder persists swapped track ordering
+  const reordered = [tracks[1], tracks[0]];
+  await db.updateTracksOrder(reordered);
+  const fetched = await db.getTracksForBook('book-loop');
+  assert.deepEqual(
+    fetched.map((t) => t.id),
+    ['tl-2', 'tl-1']
+  );
+
+  await player.unloadBook({ persist: false });
+});
