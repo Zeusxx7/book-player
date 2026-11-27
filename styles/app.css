@@ -177,7 +177,7 @@ button:focus-visible,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 24px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 12px calc(24px + env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -385,7 +385,7 @@ button:focus-visible,
   width: 100%;
   max-width: 1320px;
   margin: 0 auto;
-  padding: 24px 24px calc(104px + env(safe-area-inset-bottom, 0px));
+  padding: 24px calc(24px + env(safe-area-inset-right, 0px)) calc(104px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px));
 }
 
 .fatal-banner {
@@ -2219,7 +2219,7 @@ select optgroup {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px));
 }
 
 .drag-overlay-box {
@@ -2577,7 +2577,7 @@ kbd {
 
 @media (max-width: 640px) {
   .topbar {
-    padding: 10px 14px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 10px calc(14px + env(safe-area-inset-left, 0px));
   }
 
   .topbar-left {
@@ -2593,7 +2593,7 @@ kbd {
   }
 
   .main-content {
-    padding: 14px 12px calc(116px + env(safe-area-inset-bottom, 0px));
+    padding: 14px calc(12px + env(safe-area-inset-right, 0px)) calc(116px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
   }
 
   .player-card {
@@ -2894,7 +2894,7 @@ kbd {
 @media (max-width: 420px) {
   .topbar {
     gap: 8px;
-    padding: 10px 12px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 10px calc(12px + env(safe-area-inset-left, 0px));
   }
 
   .brand-name {
